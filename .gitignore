@@ -1,0 +1,22 @@
+# Terraform state files
+*.tfstate
+*.tfstate.*
+
+# Terraform lock file (optional: keep or ignore depending on team)
+.terraform.lock.hcl
+
+# Terraform directory
+.terraform/
+
+# Variable files (may contain secrets)
+*.tfvars
+*.tfvars.json
+
+# Crash logs
+crash.log
+
+# AWS credentials (extra safety)
+.aws/
+
+# macOS
+.DS_Store
