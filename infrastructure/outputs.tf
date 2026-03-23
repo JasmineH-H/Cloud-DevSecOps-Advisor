@@ -1,0 +1,35 @@
+output "vpc_id" {
+  description = "VPC ID"
+  value       = aws_vpc.main.id
+}
+
+output "public_subnet_ids" {
+  description = "Public subnet IDs"
+  value = [
+    aws_subnet.public_a.id,
+    aws_subnet.public_b.id
+  ]
+}
+
+output "private_subnet_ids" {
+  description = "Private subnet IDs"
+  value = [
+    aws_subnet.private_a.id,
+    aws_subnet.private_b.id
+  ]
+}
+
+output "alb_dns_name" {
+  description = "Public DNS name of the ALB"
+  value       = aws_lb.backend.dns_name
+}
+
+output "ecs_cluster_name" {
+  description = "ECS cluster name"
+  value       = aws_ecs_cluster.main.name
+}
+
+output "ecs_service_name" {
+  description = "ECS service name"
+  value       = aws_ecs_service.backend.name
+}
