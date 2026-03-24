@@ -40,25 +40,10 @@ The system is built using AWS cloud services with a modular design:
 5. Dashboard fetches and displays results
 6. Scheduled pentest runs periodically via ECS tasks
 
-## File Structure
-cloud-devsecops-advisor/
-│
-├── frontend/                 # Dashboard (S3 static hosting)
-│
-├── backend/                  # API (ECS Fargate)
-│
-├── scanners/
-│   ├── sast/                 # SAST scanner container
-│   └── pentest/              # Pentest container
-│
-├── infrastructure/           # IaC (Terraform later)
-│
-├── .github/
-│   └── workflows/            # GitHub Actions pipelines
-│
-├── docs/                     # Architecture diagrams, notes
-│
-├── scripts/                  # Helper scripts (optional)
-│
-├── docker-compose.yml        # Local dev setup
-└── README.md
+## Additional Required Repos:
+
+### vulnerable-demo-app
+https://github.com/JasmineH-H/vulnerable-node-app.git
+
+### Scan Tool
+https://github.com/JasmineH-H/SAST-Pentest-Tool.git
