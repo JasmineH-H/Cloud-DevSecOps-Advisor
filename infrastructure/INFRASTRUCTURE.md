@@ -20,6 +20,7 @@ aws configure
 ``` bash
 AWS Access Key ID:     <your access key>
 AWS Secret Access Key: <your secret key>
+AWS Session Token： <your session token>
 Default region name:   us-east-1
 Default output format: json
 ```
