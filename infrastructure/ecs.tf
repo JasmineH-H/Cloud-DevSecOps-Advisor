@@ -31,7 +31,7 @@ resource "aws_ecs_task_definition" "backend" {
       command = [
         "/bin/sh",
         "-c",
-        "echo 'server { listen 3000; location / { default_type text/plain; return 200 \"Week 1 backend is running\"; } }' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+        "echo 'server { listen 3000; location / { default_type text/plain; return 200 \"Milestone 1 backend is running\"; } }' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
       ]
     }
   ])
