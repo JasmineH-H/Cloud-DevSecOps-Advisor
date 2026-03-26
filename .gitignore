@@ -19,4 +19,9 @@ crash.log
 .aws/
 
 # macOS
-.DS_Store
+.
+
+# Lambda build artifacts
+lambda/pentest-trigger/node_modules/
+lambda/pentest-trigger/pentest-trigger.zip
+
