@@ -65,3 +65,26 @@ variable "desired_count" {
   type        = number
   default     = 1
 }
+
+variable "ingest_token_sast" {
+  description = "Bearer token for POST /ingest/sast"
+  type        = string
+  sensitive   = true
+}
+
+variable "ingest_token_pentest" {
+  description = "Bearer token for POST /ingest/pentest"
+  type        = string
+  sensitive   = true
+}
+
+variable "pentest_target_url" {
+  description = "URL of the app to pentest (e.g. vulnerable-node-app ALB)"
+  type        = string
+}
+
+variable "pentest_repo_name" {
+  description = "Repo label for tagging pentest results"
+  type        = string
+  default     = "vulnerable-node-app"
+}

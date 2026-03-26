@@ -33,3 +33,9 @@ output "ecs_service_name" {
   description = "ECS service name"
   value       = aws_ecs_service.backend.name
 }
+
+
+output "reports_s3_bucket" {
+  description = "S3 bucket name for scan reports"
+  value       = aws_s3_bucket.reports.bucket
+}
