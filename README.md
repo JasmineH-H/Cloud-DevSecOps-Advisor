@@ -4,10 +4,11 @@ A cloud-based security platform that automatically runs SAST and API penetration
 
 ## Overview
 
-Modern development teams struggle to maintain continuous security without slowing down delivery. 
+Modern development teams struggle to maintain continuous security without slowing down delivery.
 This project provides an automated DevSecOps pipeline that integrates security scanning directly into the development workflow.
 
 Key features:
+
 - Automatic SAST scanning on every code push
 - Scheduled API penetration testing
 - Centralized dashboard for tracking vulnerabilities and trends
@@ -43,7 +44,46 @@ The system is built using AWS cloud services with a modular design:
 ## Additional Required Repos:
 
 ### vulnerable-demo-app
+
 https://github.com/JasmineH-H/vulnerable-node-app.git
 
 ### Scan Tool
+
 https://github.com/JasmineH-H/SAST-Pentest-Tool.git
+
+#### Build and Push the Pentest Docker Image
+
+Before triggering the pentest pipeline, ensure that the pentest Docker image is available in Amazon ECR.  
+If the image is missing, the ECS task will fail with `CannotPullContainerError`.
+
+> Run the following steps from the **Scan Tool repository root directory** (where the `pentest/` folder is located).
+
+1. Get your AWS account ID
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+echo $ACCOUNT_ID
+```
+
+2. Log in to Amazon ECR
+
+```bash
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+```
+
+3. Build the pentest image
+
+```bash
+docker buildx build \
+  --platform linux/amd64 \
+  -t 884801081007.dkr.ecr.us-east-1.amazonaws.com/devsecops-advisor-pentest:latest \
+  --push .
+```
+
+6. Verify that the image exists in ECR
+
+```bash
+aws ecr describe-images \
+  --repository-name devsecops-advisor-pentest \
+  --region us-east-1
+```
