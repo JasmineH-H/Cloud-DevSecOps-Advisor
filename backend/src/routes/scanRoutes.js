@@ -1,13 +1,13 @@
 const express = require("express");
 const {
-  ingestSast,
+  ingestSAST,
   ingestPentest,
   getRepoScans,
   getLatestRepoScan,
   getScanDetail,
   getDashboardSummary,
   getRepoDynamoItems,
-  getScanDynamoItem,   
+  getScanDynamoItem,
   getAwsDynamoStatus,
   getAwsS3Status,
   getRepos
@@ -26,7 +26,7 @@ router.get("/health", (req, res) => {
 router.post(
   "/ingest/sast",
   verifyIngestToken(process.env.INGEST_TOKEN_SAST),
-  ingestSast
+  ingestSAST
 );
 
 router.post(

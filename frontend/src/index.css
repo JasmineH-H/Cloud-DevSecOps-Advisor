@@ -1,0 +1,287 @@
+:root {
+  font-family: Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #111;
+  background: #f7f7f7;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #f7f7f7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  margin: 0 0 8px;
+  font-size: 32px;
+}
+
+.page-header p {
+  margin: 0;
+  color: #444;
+}
+
+.repo-form {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: end;
+  background: white;
+  padding: 16px;
+  border: 1px solid #ddd;
+  margin-bottom: 24px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+}
+
+.form-group label {
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+
+.form-group input {
+  padding: 10px;
+  border: 1px solid #bbb;
+}
+
+button {
+  padding: 10px 16px;
+  border: 1px solid #111;
+  background: white;
+  cursor: pointer;
+}
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.card {
+  background: white;
+  border: 1px solid #ddd;
+  padding: 16px;
+}
+
+.card h3 {
+  margin-top: 0;
+}
+
+.score {
+  font-size: 32px;
+  font-weight: bold;
+  margin: 8px 0 0;
+}
+
+.table-section {
+  background: white;
+  border: 1px solid #ddd;
+  padding: 16px;
+  margin-bottom: 24px;
+  overflow-x: auto;
+}
+
+.table-section h2 {
+  margin-top: 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border: 1px solid #ddd;
+  text-align: left;
+  padding: 10px;
+  vertical-align: top;
+}
+
+th {
+  background: #f0f0f0;
+}
+
+.status-message {
+  color: #333;
+}
+
+.error-message {
+  color: #b00020;
+  font-weight: bold;
+}
+
+.searchable-select {
+  position: relative;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+}
+
+.searchable-select label {
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+
+.searchable-select input {
+  padding: 10px;
+  border: 1px solid #bbb;
+  background: white;
+}
+
+.dropdown-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #bbb;
+  border-top: none;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.dropdown-item {
+  width: 100%;
+  text-align: left;
+  padding: 10px;
+  background: white;
+  border: none;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+}
+
+.dropdown-item:hover {
+  background: #f3f3f3;
+}
+
+.dropdown-empty {
+  padding: 10px;
+  color: #666;
+  background: white;
+}
+
+.severity-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: bold;
+  font-size: 14px;
+  text-transform: capitalize;
+}
+
+.severity-critical {
+  background: #7f1d1d;
+  color: white;
+}
+
+.severity-high {
+  background: #dc2626;
+  color: white;
+}
+
+.severity-medium {
+  background: #f59e0b;
+  color: white;
+}
+
+.severity-low {
+  background: #fde68a;
+  color: #111;
+}
+
+.score-high {
+  color: #dc2626;
+}
+
+.score-medium {
+  color: #f59e0b;
+}
+
+.score-low {
+  color: #16a34a;
+}
+
+.view-button {
+  padding: 6px 12px;
+  border: 1px solid #111;
+  background: white;
+  cursor: pointer;
+}
+
+.view-button:hover {
+  background: #f3f3f3;
+}
+
+.detail-panel {
+  background: white;
+  border: 1px solid #ddd;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.detail-panel h2,
+.detail-panel h3 {
+  margin-top: 0;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+
+.detail-panel pre {
+  background: #f7f7f7;
+  padding: 12px;
+  border: 1px solid #ddd;
+  overflow-x: auto;
+}
+
+.github-comment {
+  background: #f9fafb;
+  border: 1px solid #ddd;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.github-comment h2 {
+  margin-top: 0;
+}
+
+.github-comment pre {
+  background: #fff;
+  padding: 12px;
+  border: 1px solid #ddd;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
