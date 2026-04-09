@@ -2,7 +2,6 @@ const {
   saveScanRecord,
   getDynamoItemByRunId,
   getDynamoItemsByRepo,
-  getRepoOptions,
   getRepoOptionsLive,
   getScansByRepoLive,
   getLatestScanByRepoLive,
@@ -165,6 +164,7 @@ async function ingestPentest(req, res) {
     // Handle topFindings and riskScore based on payload format
     let topFindings = [];
     let riskScore = 0;
+    let totalFindings = 0;
 
     if (hasDetailedResults) {
       // Older format with detailed results
@@ -178,6 +178,8 @@ async function ingestPentest(req, res) {
           details: item.details
         }));
 
+      totalFindings = topFindings.length;
+
       riskScore = typeof summary?.riskScore === 'number'
         ? summary.riskScore
         : Math.min(
@@ -190,11 +192,13 @@ async function ingestPentest(req, res) {
       // New format: summary-only payload
       topFindings = [];
       
-      // Calculate riskScore from summary counts
+      // Calculate riskScore and totalFindings from summary counts
       if (summary && typeof summary === 'object') {
         const errorCount = summary.ERROR || 0;
         const failCount = summary.FAIL || 0;
         const warningCount = summary.WARNING || 0;
+        
+        totalFindings = errorCount + failCount + warningCount;
         
         riskScore = Math.min(
           100,
@@ -221,15 +225,16 @@ async function ingestPentest(req, res) {
         timestamp: timestamp || new Date().toISOString(),
         branch: null,
         commitSha: null,
-        toolName: "pentest-lambda",
+        toolName: payload.tool || "pentest-lambda",
         toolVersion: null
       },
       summary: {
         riskScore,
         severityCounts: summary || {},
-        totalFindings: topFindings.length
+        totalFindings
       },
       topFindings,
+      rawReportS3Key: reportS3Key || null,
       report: {
         format: "json",
         content: reportContent

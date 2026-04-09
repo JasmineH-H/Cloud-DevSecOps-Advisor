@@ -3,9 +3,7 @@ const { mapRecordToDynamoItem } = require("../utils/dynamoMapper");
 const { formatGitHubComment } = require("../utils/githubCommentFormatter");
 const { uploadReportToS3, listReportObjects, getJsonObject } = require("./s3Service");
 const {
-  saveToDynamo,
-  getScansByRepoFromDynamo,
-  getScanByRunIdFromDynamo
+  saveToDynamo
 } = require("./dynamoService");
 
 
@@ -27,6 +25,7 @@ function buildScanResponse(payload) {
     severityCounts: payload.summary.severityCounts,
     totalFindings: payload.summary.totalFindings,
     topFindings: payload.topFindings || [],
+    rawReportS3Key: payload.rawReportS3Key || null,
     reportFormat: payload.report.format,
     reportContent: payload.report.content
   };
@@ -66,7 +65,8 @@ async function saveScanRecord(payload) {
       toolName: record.toolName,
       toolVersion: record.toolVersion,
       reportFormat: record.reportFormat,
-      reportS3Key: s3Key
+      reportS3Key: s3Key,
+      rawReportS3Key: record.rawReportS3Key || null
     };
 
     await saveToDynamo(dynamoItem);
@@ -322,6 +322,7 @@ async function getScansByRepoLive(owner, repo) {
             toolName: jsonData.toolName,
             toolVersion: jsonData.toolVersion,
             reportFormat: jsonData.reportFormat,
+            rawReportS3Key: jsonData.rawReportS3Key || null,
             reportS3Key: key
           });
         }
@@ -376,6 +377,7 @@ async function getScanByRunIdLive(runId) {
             toolName: jsonData.toolName,
             toolVersion: jsonData.toolVersion,
             reportFormat: jsonData.reportFormat,
+            rawReportS3Key: jsonData.rawReportS3Key || null,
             reportS3Key: key
           };
         }
