@@ -108,7 +108,9 @@ async function ingestPentest(req, res) {
     const repoValue = payload.repo;
     const timestamp = payload.timestamp;
     const summary = payload.summary;
+    const reportS3Key = payload.reportS3Key;
     const detailedResults = payload.results?.results || [];
+    const hasDetailedResults = payload.results?.results && Array.isArray(payload.results.results);
 
     if (!repoValue || !runId) {
       return res.status(400).json({
@@ -160,24 +162,54 @@ async function ingestPentest(req, res) {
       });
     }
 
-    const topFindings = detailedResults
-      .filter((item) => item.status !== "PASS")
-      .map((item) => ({
-        id: item.id,
-        name: item.name,
-        severity: item.severity,
-        status: item.status,
-        details: item.details
-      }));
+    // Handle topFindings and riskScore based on payload format
+    let topFindings = [];
+    let riskScore = 0;
 
-    const riskScore = typeof summary?.riskScore === 'number'
-      ? summary.riskScore
-      : Math.min(
+    if (hasDetailedResults) {
+      // Older format with detailed results
+      topFindings = detailedResults
+        .filter((item) => item.status !== "PASS")
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          severity: item.severity,
+          status: item.status,
+          details: item.details
+        }));
+
+      riskScore = typeof summary?.riskScore === 'number'
+        ? summary.riskScore
+        : Math.min(
+            100,
+            (detailedResults.filter((item) => item.status === "ERROR").length * 25) +
+            (detailedResults.filter((item) => item.status === "FAIL").length * 20) +
+            (detailedResults.filter((item) => item.status === "WARNING").length * 10)
+          );
+    } else {
+      // New format: summary-only payload
+      topFindings = [];
+      
+      // Calculate riskScore from summary counts
+      if (summary && typeof summary === 'object') {
+        const errorCount = summary.ERROR || 0;
+        const failCount = summary.FAIL || 0;
+        const warningCount = summary.WARNING || 0;
+        
+        riskScore = Math.min(
           100,
-          (detailedResults.filter((item) => item.status === "ERROR").length * 25) +
-          (detailedResults.filter((item) => item.status === "FAIL").length * 20) +
-          (detailedResults.filter((item) => item.status === "WARNING").length * 10)
+          (errorCount * 25) + (failCount * 20) + (warningCount * 10)
         );
+      }
+    }
+
+    // Build report content with reportS3Key preserved
+    const reportContent = {
+      ...payload
+    };
+    if (reportS3Key) {
+      reportContent.reportS3Key = reportS3Key;
+    }
 
     const normalizedPayload = {
       source: "lambda",
@@ -200,7 +232,7 @@ async function ingestPentest(req, res) {
       topFindings,
       report: {
         format: "json",
-        content: payload
+        content: reportContent
       }
     };
 
