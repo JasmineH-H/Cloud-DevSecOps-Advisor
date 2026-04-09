@@ -6,7 +6,18 @@ This service ingests SAST and pentest scan results, stores scan metadata in Dyna
 ```bash
 npm install
 npm run dev
+```
 
-Current endpoints
+## Build Docker image (for ECS / Fargate)
 
+Make sure to build for the correct platform (linux/amd64) to avoid architecture mismatch errors when deploying to ECS:
+
+```bash
+docker buildx build --platform linux/amd64 -t devsecops-backend ./backend
+```
+
+## Current endpoints
+
+```bash
 GET /health
+```
