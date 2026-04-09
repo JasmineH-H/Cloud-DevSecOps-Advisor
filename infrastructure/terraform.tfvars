@@ -11,8 +11,6 @@ task_memory           = "512"
 desired_count         = 1
 
 
-ingest_token_sast    = "7f3b91d2c4a84e7e9a2d6b1f5c8e3a11"
-ingest_token_pentest = "pt-7x$Km2#vQpL9nRdWj4YeHcBs6FgTuNzA"
 pentest_repo_name    = "vulnerable-node-app"
 
 # Testing with Juice Shop
