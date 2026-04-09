@@ -1,13 +1,9 @@
-const { validateIngestPayload } = require("../utils/validateIngestPayload");
 const {
   saveScanRecord,
-  getScansByRepo,
-  getLatestScanByRepo,
-  getScanByRunId,
-  buildDashboardSummary,
   getDynamoItemByRunId,
   getDynamoItemsByRepo,
   getRepoOptions,
+  getRepoOptionsLive,
   getScansByRepoLive,
   getLatestScanByRepoLive,
   buildDashboardSummaryLive,
@@ -15,39 +11,6 @@ const {
 } = require("../services/scanService");
 const { getDynamoClientStatus } = require("../services/dynamoService");
 const { getS3ClientStatus } = require("../services/s3Service");
-const { formatGitHubComment } = require("../utils/githubCommentFormatter");
-
-function validateAuthorizationHeader(req, res, expectedToken) {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader) {
-    res.status(401).json({
-      success: false,
-      message: "Missing Authorization header"
-    });
-    return false;
-  }
-
-  if (!authHeader.startsWith("Bearer ")) {
-    res.status(401).json({
-      success: false,
-      message: "Invalid Authorization header format"
-    });
-    return false;
-  }
-
-  const token = authHeader.split(" ")[1];
-
-  if (token !== expectedToken) {
-    res.status(401).json({
-      success: false,
-      message: "Invalid ingest token"
-    });
-    return false;
-  }
-
-  return true;
-}
 
 async function ingestSAST(req, res) {
   try {
@@ -271,7 +234,7 @@ async function getRepoScans(req, res) {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to query scans from DynamoDB",
+      message: "Failed to query scans from S3",
       error: error.message
     });
   }
@@ -297,7 +260,7 @@ async function getLatestRepoScan(req, res) {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to query latest scan from DynamoDB",
+      message: "Failed to query latest scan from S3",
       error: error.message
     });
   }
@@ -323,7 +286,7 @@ async function getScanDetail(req, res) {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to query scan detail from DynamoDB",
+      message: "Failed to query scan detail from S3",
       error: error.message
     });
   }
@@ -349,7 +312,7 @@ async function getDashboardSummary(req, res) {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to build dashboard summary from DynamoDB",
+      message: "Failed to build dashboard summary from S3",
       error: error.message
     });
   }
@@ -401,13 +364,21 @@ function getAwsS3Status(req, res) {
   });
 }
 
-function getRepos(req, res) {
-  const repoOptions = getRepoOptions();
+async function getRepos(req, res) {
+  try {
+    const repoOptions = await getRepoOptionsLive();
 
-  return res.status(200).json({
-    success: true,
-    data: repoOptions
-  });
+    return res.status(200).json({
+      success: true,
+      data: repoOptions
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve repositories from S3",
+      error: error.message
+    });
+  }
 }
 
 module.exports = {
