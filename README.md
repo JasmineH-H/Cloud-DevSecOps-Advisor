@@ -23,10 +23,6 @@ The system is built using AWS cloud services with a modular design:
 - Data Storage: DynamoDB + S3
 - Scanners: Containerized SAST and Pentest services
 
-## How to run everything (Terraform → Docker → ECS → frontend)
-
-See **[infrastructure/INFRASTRUCTURE.md](infrastructure/INFRASTRUCTURE.md)** for the full order: AWS credentials, Secrets Manager, `terraform apply`, push **backend** and **pentest** images to ECR, force ECS deployment, then build the frontend with `VITE_API_URL` pointing at the ALB.
-
 ## Tech Stack
 
 - Frontend: React, Tailwind CSS
@@ -75,12 +71,12 @@ echo $ACCOUNT_ID
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
 ```
 
-3. Build the pentest image from the **`pentest/`** folder of SAST-Pentest-Tool (where its Dockerfile lives). Use **your** account and `terraform output -raw pentest_ecr_url` for the tag.
+3. Build the pentest image
 
 ```bash
 docker buildx build \
   --platform linux/amd64 \
-  -t "${PENTEST_ECR}:latest" \
+  -t $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/devsecops-advisor-pentest:latest \
   --push .
 ```
 
@@ -90,4 +86,62 @@ docker buildx build \
 aws ecr describe-images \
   --repository-name devsecops-advisor-pentest \
   --region us-east-1
+```
+
+## Deploy the Backend to AWS
+
+The backend runs on ECS Fargate behind the application load balancer created by Terraform.
+
+### 1. Confirm the required Secrets Manager entries exist
+
+The infrastructure expects these AWS Secrets Manager names:
+
+- `devsecops/sast`
+- `devsecops/pentest`
+
+### 2. Apply the infrastructure
+
+```bash
+cd infrastructure
+terraform apply
+```
+
+### 3. Build and push the backend image to ECR
+
+Use `linux/amd64` when building so ECS Fargate can pull the image correctly.
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+
+docker buildx build \
+  --platform linux/amd64 \
+  -t $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/devsecops-advisor-backend:latest \
+  ./backend \
+  --push
+```
+
+### 4. Force ECS to pull the latest image
+
+```bash
+aws ecs update-service \
+  --cluster devsecops-advisor-cluster \
+  --service devsecops-advisor-backend-service \
+  --force-new-deployment \
+  --region us-east-1
+```
+
+### 5. Verify the backend is running
+
+```bash
+cd infrastructure
+terraform output alb_dns_name
+curl http://<alb-dns-name>/health
+```
+
+Expected response:
+
+```json
+{"success":true,"message":"Backend API is running"}
 ```

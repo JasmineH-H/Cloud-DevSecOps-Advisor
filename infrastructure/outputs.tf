@@ -39,6 +39,15 @@ output "ecs_service_name" {
   value       = aws_ecs_service.backend.name
 }
 
+output "backend_ecr_url" {
+  description = "ECR URL for the backend container image"
+  value       = aws_ecr_repository.backend.repository_url
+}
+
+output "scan_results_table" {
+  description = "DynamoDB table name for backend scan metadata"
+  value       = aws_dynamodb_table.scan_results.name
+}
 
 output "reports_s3_bucket" {
   description = "S3 bucket name for scan reports"

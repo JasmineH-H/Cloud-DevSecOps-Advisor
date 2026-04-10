@@ -1,4 +1,11 @@
-# ECR for the Advisor API (this repo's backend/ — ingest + dashboard APIs)
+resource "aws_ecs_cluster" "main" {
+  name = "${var.project_name}-cluster"
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-cluster"
+  })
+}
+
 resource "aws_ecr_repository" "backend" {
   name         = "${var.project_name}-backend"
   force_delete = true
@@ -17,16 +24,6 @@ resource "aws_cloudwatch_log_group" "backend" {
   })
 }
 
-resource "aws_ecs_cluster" "main" {
-  name = "${var.project_name}-cluster"
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_name}-cluster"
-  })
-}
-
-# Long-running service: Node backend (SAST/pentest ingest, DynamoDB, S3).
-# Build/push image from Cloud-DevSecOps-Advisor/backend (not SAST-Pentest-Tool).
 resource "aws_ecs_task_definition" "backend" {
   family                   = "${var.project_name}-backend"
   network_mode             = "awsvpc"
@@ -35,8 +32,6 @@ resource "aws_ecs_task_definition" "backend" {
   memory                   = var.task_memory
   execution_role_arn       = data.aws_iam_role.ecs_task_execution.arn
   task_role_arn            = data.aws_iam_role.ecs_task_execution.arn
-
-  depends_on = [aws_cloudwatch_log_group.backend]
 
   container_definitions = jsonencode([
     {
@@ -52,6 +47,25 @@ resource "aws_ecs_task_definition" "backend" {
         }
       ]
 
+      environment = [
+        {
+          name  = "PORT"
+          value = tostring(var.container_port)
+        },
+        {
+          name  = "AWS_REGION"
+          value = var.aws_region
+        },
+        {
+          name  = "REPORTS_BUCKET"
+          value = aws_s3_bucket.reports.bucket
+        },
+        {
+          name  = "SCAN_RESULTS_TABLE"
+          value = aws_dynamodb_table.scan_results.name
+        }
+      ]
+
       secrets = [
         {
           name      = "INGEST_TOKEN_SAST"
@@ -63,34 +77,53 @@ resource "aws_ecs_task_definition" "backend" {
         }
       ]
 
-      environment = [
-        {
-          name  = "AWS_REGION"
-          value = var.aws_region
-        },
-        {
-          name  = "SCAN_RESULTS_TABLE"
-          value = aws_dynamodb_table.scan_results.name
-        },
-        {
-          name  = "REPORTS_BUCKET"
-          value = aws_s3_bucket.reports.bucket
-        }
-      ]
-
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          awslogs-group         = "/ecs/${var.project_name}-backend"
+          awslogs-group         = aws_cloudwatch_log_group.backend.name
           awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "backend"
+          awslogs-stream-prefix = "ecs"
         }
+      }
+
+      healthCheck = {
+        command     = ["CMD-SHELL", "wget -qO- http://localhost:${var.container_port}/health >/dev/null || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 20
       }
     }
   ])
 
+  depends_on = [
+    aws_cloudwatch_log_group.backend,
+    aws_dynamodb_table.scan_results
+  ]
+
   tags = merge(local.common_tags, {
     Name = "${var.project_name}-taskdef"
+  })
+}
+
+resource "aws_dynamodb_table" "scan_results" {
+  name         = "${var.project_name}-scan-results"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "repo"
+  range_key    = "timestamp"
+
+  attribute {
+    name = "repo"
+    type = "S"
+  }
+
+  attribute {
+    name = "timestamp"
+    type = "S"
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-scan-results"
   })
 }
 

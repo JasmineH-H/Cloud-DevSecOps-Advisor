@@ -66,6 +66,18 @@ variable "desired_count" {
   default     = 1
 }
 
+variable "sast_secret_name" {
+  description = "Secrets Manager secret name for the SAST ingest token"
+  type        = string
+  default     = "devsecops/sast"
+}
+
+variable "pentest_secret_name" {
+  description = "Secrets Manager secret name for the pentest ingest token"
+  type        = string
+  default     = "devsecops/pentest"
+}
+
 variable "pentest_target_url" {
   description = "Optional override for pentest TARGET_URL. Leave empty to use the Juice Shop ALB deployed in this stack (see juiceshop_url output)."
   type        = string
