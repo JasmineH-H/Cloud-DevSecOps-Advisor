@@ -5,6 +5,8 @@ const {
   getLatestScanByRepoPrimary,
   getScanByRunIdPrimary,
   buildDashboardSummaryPrimary,
+  getDynamoItemsByRepo,
+  getDynamoItemByRunId,
 } = require("../services/scanService");
 const { getDynamoClientStatus } = require("../services/dynamoService");
 const { getS3ClientStatus } = require("../services/s3Service");
@@ -127,7 +129,7 @@ async function ingestPentest(req, res) {
         };
       } else {
         repoObj = {
-          fullName: repoValue,
+          fullName: `unknown/${repoValue}`,
           owner: "unknown",
           name: repoValue
         };
