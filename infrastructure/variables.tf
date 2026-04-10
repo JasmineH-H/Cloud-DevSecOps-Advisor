@@ -66,6 +66,18 @@ variable "desired_count" {
   default     = 1
 }
 
+variable "sast_secret_name" {
+  description = "Secrets Manager secret name for the SAST ingest token"
+  type        = string
+  default     = "devsecops/sast"
+}
+
+variable "pentest_secret_name" {
+  description = "Secrets Manager secret name for the pentest ingest token"
+  type        = string
+  default     = "devsecops/pentest"
+}
+
 variable "pentest_target_url" {
   description = "URL of the app to pentest (e.g. vulnerable-node-app ALB)"
   type        = string

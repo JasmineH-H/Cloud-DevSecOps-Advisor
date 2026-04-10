@@ -76,7 +76,7 @@ aws ecr get-login-password --region us-east-1 | docker login --username AWS --pa
 ```bash
 docker buildx build \
   --platform linux/amd64 \
-  -t 884801081007.dkr.ecr.us-east-1.amazonaws.com/devsecops-advisor-pentest:latest \
+  -t $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/devsecops-advisor-pentest:latest \
   --push .
 ```
 
@@ -86,4 +86,62 @@ docker buildx build \
 aws ecr describe-images \
   --repository-name devsecops-advisor-pentest \
   --region us-east-1
+```
+
+## Deploy the Backend to AWS
+
+The backend runs on ECS Fargate behind the application load balancer created by Terraform.
+
+### 1. Confirm the required Secrets Manager entries exist
+
+The infrastructure expects these AWS Secrets Manager names:
+
+- `devsecops/sast`
+- `devsecops/pentest`
+
+### 2. Apply the infrastructure
+
+```bash
+cd infrastructure
+terraform apply
+```
+
+### 3. Build and push the backend image to ECR
+
+Use `linux/amd64` when building so ECS Fargate can pull the image correctly.
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+
+docker buildx build \
+  --platform linux/amd64 \
+  -t $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/devsecops-advisor-backend:latest \
+  ./backend \
+  --push
+```
+
+### 4. Force ECS to pull the latest image
+
+```bash
+aws ecs update-service \
+  --cluster devsecops-advisor-cluster \
+  --service devsecops-advisor-backend-service \
+  --force-new-deployment \
+  --region us-east-1
+```
+
+### 5. Verify the backend is running
+
+```bash
+cd infrastructure
+terraform output alb_dns_name
+curl http://<alb-dns-name>/health
+```
+
+Expected response:
+
+```json
+{"success":true,"message":"Backend API is running"}
 ```

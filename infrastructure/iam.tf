@@ -10,4 +10,3 @@ data "aws_secretsmanager_secret" "pentest" {
 data "aws_secretsmanager_secret" "sast" {
   name = "devsecops/sast"
 }
-

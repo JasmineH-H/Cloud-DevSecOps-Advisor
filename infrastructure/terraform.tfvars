@@ -10,6 +10,8 @@ task_cpu              = "256"
 task_memory           = "512"
 desired_count         = 1
 
+sast_secret_name    = "devsecops/sast"
+pentest_secret_name = "devsecops/pentest"
 
 pentest_repo_name = "vulnerable-node-app"
 
