@@ -14,7 +14,7 @@ desired_count         = 1
 pentest_repo_name = "vulnerable-node-app"
 
 # Testing with Juice Shop
-pentest_target_url = "http://devsecops-advisor-juiceshop-alb-1714605733.us-east-1.elb.amazonaws.com"
+pentest_target_url = "http://devsecops-advisor-juiceshop-alb-576797998.us-east-1.elb.amazonaws.com"
 
 # Later — point at any other app
 # pentest_target_url = "http://<vulnerable-node-app-ALB-DNS>"

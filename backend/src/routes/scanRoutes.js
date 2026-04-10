@@ -16,6 +16,13 @@ const { verifyIngestToken } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
+router.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Backend API is running"
+  });
+});
+
 router.get("/health", (req, res) => {
   res.status(200).json({
     success: true,

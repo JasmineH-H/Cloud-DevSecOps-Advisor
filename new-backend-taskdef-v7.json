@@ -1,0 +1,42 @@
+{
+  "family": "devsecops-advisor-backend",
+  "taskRoleArn": "arn:aws:iam::714234925361:role/LabRole",
+  "executionRoleArn": "arn:aws:iam::714234925361:role/LabRole",
+  "networkMode": "awsvpc",
+  "containerDefinitions": [
+    {
+      "name": "backend",
+      "image": "714234925361.dkr.ecr.us-east-1.amazonaws.com/devsecops-advisor-backend:backend-20260410-1",
+      "cpu": 0,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "hostPort": 3000,
+          "protocol": "tcp",
+          "name": "backend-3000-tcp"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        {
+          "name": "INGEST_TOKEN_PENTEST",
+          "value": "pt-7x$Km2#vQpL9nRdWj4YeHcBs6FgTuNzA"
+        },
+        {
+          "name": "INGEST_TOKEN_SAST",
+          "value": "7f3b91d2c4a84e7e9a2d6b1f5c8e3a11"
+        }
+      ],
+      "mountPoints": [],
+      "volumesFrom": [],
+      "systemControls": []
+    }
+  ],
+  "volumes": [],
+  "placementConstraints": [],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512"
+}

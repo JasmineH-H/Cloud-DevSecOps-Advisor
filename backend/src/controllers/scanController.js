@@ -1,12 +1,10 @@
 const {
   saveScanRecord,
-  getDynamoItemByRunId,
-  getDynamoItemsByRepo,
-  getRepoOptionsLive,
-  getScansByRepoLive,
-  getLatestScanByRepoLive,
-  buildDashboardSummaryLive,
-  getScanByRunIdLive,
+  getRepoOptionsPrimary,
+  getScansByRepoPrimary,
+  getLatestScanByRepoPrimary,
+  getScanByRunIdPrimary,
+  buildDashboardSummaryPrimary,
 } = require("../services/scanService");
 const { getDynamoClientStatus } = require("../services/dynamoService");
 const { getS3ClientStatus } = require("../services/s3Service");
@@ -88,7 +86,7 @@ async function ingestSAST(req, res) {
 
     return res.status(200).json({
       success: true,
-      message: "Scan ingested successfully",
+      message: "Scan ingested successfully - updated-backend-v1",
       data: savedRecord
     });
   } catch (error) {
@@ -245,7 +243,7 @@ async function ingestPentest(req, res) {
 
     return res.status(200).json({
       success: true,
-      message: "Pentest scan ingested successfully",
+      message: "Pentest scan ingested successfully - updated-backend-v1",
       data: savedRecord
     });
   } catch (error) {
@@ -261,7 +259,7 @@ async function getRepoScans(req, res) {
   const { owner, repo } = req.params;
 
   try {
-    const scans = await getScansByRepoLive(owner, repo);
+    const scans = await getScansByRepoPrimary(owner, repo);
 
     return res.status(200).json({
       success: true,
@@ -271,7 +269,7 @@ async function getRepoScans(req, res) {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to query scans from S3",
+      message: "Failed to query scans",
       error: error.message
     });
   }
@@ -281,7 +279,7 @@ async function getLatestRepoScan(req, res) {
   const { owner, repo } = req.params;
 
   try {
-    const latestScan = await getLatestScanByRepoLive(owner, repo);
+    const latestScan = await getLatestScanByRepoPrimary(owner, repo);
 
     if (!latestScan) {
       return res.status(404).json({
@@ -297,7 +295,7 @@ async function getLatestRepoScan(req, res) {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to query latest scan from S3",
+      message: "Failed to query latest scan",
       error: error.message
     });
   }
@@ -307,7 +305,7 @@ async function getScanDetail(req, res) {
   const { runId } = req.params;
 
   try {
-    const scan = await getScanByRunIdLive(runId);
+    const scan = await getScanByRunIdPrimary(runId);
 
     if (!scan) {
       return res.status(404).json({
@@ -323,7 +321,7 @@ async function getScanDetail(req, res) {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to query scan detail from S3",
+      message: "Failed to query scan detail",
       error: error.message
     });
   }
@@ -333,7 +331,7 @@ async function getDashboardSummary(req, res) {
   const { owner, repo } = req.params;
 
   try {
-    const summary = await buildDashboardSummaryLive(owner, repo);
+    const summary = await buildDashboardSummaryPrimary(owner, repo);
 
     if (!summary.latestSast && !summary.latestPentest) {
       return res.status(404).json({
@@ -349,7 +347,7 @@ async function getDashboardSummary(req, res) {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to build dashboard summary from S3",
+      message: "Failed to build dashboard summary",
       error: error.message
     });
   }
@@ -403,7 +401,7 @@ function getAwsS3Status(req, res) {
 
 async function getRepos(req, res) {
   try {
-    const repoOptions = await getRepoOptionsLive();
+    const repoOptions = await getRepoOptionsPrimary();
 
     return res.status(200).json({
       success: true,
