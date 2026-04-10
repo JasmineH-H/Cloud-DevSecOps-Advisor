@@ -1,7 +1,13 @@
 import axios from "axios";
 
+// Local dev: omit VITE_API_URL or set http://localhost:3000
+// Production build: VITE_API_URL=http://your-alb-dns.region.elb.amazonaws.com npm run build
+const apiBaseUrl = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(
+  /\/+$/,
+  ""
+);
 const api = axios.create({
-  baseURL: "http://localhost:3000"
+  baseURL: apiBaseUrl
 });
 
 export async function fetchRepoOptions() {

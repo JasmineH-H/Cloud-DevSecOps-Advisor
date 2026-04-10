@@ -38,7 +38,7 @@ function buildScanResponse(payload) {
 
 async function saveScanRecord(payload) {
   const record = buildScanResponse(payload);
-  const s3Key = `reports/${record.repo}/${record.scanType}/${record.runId}.json`;
+  const s3Key = `reports/${record.repo}/${String(record.scanType).toLowerCase()}/${record.runId}.json`;
 
   // Debug: Log before starting
   console.log("[saveScanRecord] Starting ingest:", {

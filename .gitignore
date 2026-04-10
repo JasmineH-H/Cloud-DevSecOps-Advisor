@@ -21,6 +21,11 @@ crash.log
 # macOS
 .
 
+# Frontend env (VITE_API_URL for production builds)
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
 # Lambda build artifacts
 lambda/pentest-trigger/node_modules/
 lambda/pentest-trigger/pentest-trigger.zip

@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars (gitignored) and customize if needed.
+#
+# Optional: pentest a URL other than the Juice Shop ALB in this stack.
+# pentest_target_url = "http://your-vulnerable-app-alb.region.elb.amazonaws.com"
+#
+# Optional: label stored with pentest results (matches dashboard repo filter).
+# pentest_repo_name = "vulnerable-node-app"

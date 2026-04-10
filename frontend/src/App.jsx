@@ -167,7 +167,7 @@ function App() {
                 <p><strong>Risk Score:</strong> {selectedScan.riskScore}</p>
                 <p><strong>Total Findings:</strong> {selectedScan.totalFindings}</p>
                 <p><strong>Report Format:</strong> {selectedScan.reportFormat}</p>
-                <p><strong>S3 Report Path:</strong> {selectedScan.reportS3Key}</p>
+                <p><strong>S3 Report Path:</strong> {selectedScan.reportS3Key || "N/A"}</p>
                 <button
                   style={{ marginLeft: "10px" }}
                   onClick={() => navigator.clipboard.writeText(selectedScan.reportS3Key)}
@@ -178,10 +178,10 @@ function App() {
               </div>
 
               <h3>Severity Counts</h3>
-              <pre>{JSON.stringify(selectedScan.severityCounts, null, 2)}</pre>
+              <pre>{JSON.stringify(selectedScan.severityCounts || {}, null, 2)}</pre>
 
               <h3>Top Findings</h3>
-              <pre>{JSON.stringify(selectedScan.topFindings, null, 2)}</pre>
+              <pre>{JSON.stringify(selectedScan.topFindings || [], null, 2)}</pre>
             </section>
           )}
 

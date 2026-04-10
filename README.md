@@ -23,6 +23,10 @@ The system is built using AWS cloud services with a modular design:
 - Data Storage: DynamoDB + S3
 - Scanners: Containerized SAST and Pentest services
 
+## How to run everything (Terraform → Docker → ECS → frontend)
+
+See **[infrastructure/INFRASTRUCTURE.md](infrastructure/INFRASTRUCTURE.md)** for the full order: AWS credentials, Secrets Manager, `terraform apply`, push **backend** and **pentest** images to ECR, force ECS deployment, then build the frontend with `VITE_API_URL` pointing at the ALB.
+
 ## Tech Stack
 
 - Frontend: React, Tailwind CSS
@@ -71,12 +75,12 @@ echo $ACCOUNT_ID
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
 ```
 
-3. Build the pentest image
+3. Build the pentest image from the **`pentest/`** folder of SAST-Pentest-Tool (where its Dockerfile lives). Use **your** account and `terraform output -raw pentest_ecr_url` for the tag.
 
 ```bash
 docker buildx build \
   --platform linux/amd64 \
-  -t 884801081007.dkr.ecr.us-east-1.amazonaws.com/devsecops-advisor-pentest:latest \
+  -t "${PENTEST_ECR}:latest" \
   --push .
 ```
 

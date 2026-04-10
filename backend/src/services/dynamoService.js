@@ -31,12 +31,14 @@ async function getScansByRepoFromDynamo(repo) {
 }
 
 async function getScanByRunIdFromDynamo(runId) {
-  const command = new ScanCommand({
+  const command = new QueryCommand({
     TableName: TABLE_NAME,
-    FilterExpression: "runId = :runIdValue",
+    IndexName: "runId-index",
+    KeyConditionExpression: "runId = :runIdValue",
     ExpressionAttributeValues: {
       ":runIdValue": runId
-    }
+    },
+    Limit: 1
   });
 
   const response = await dynamoDocClient.send(command);

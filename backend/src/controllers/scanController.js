@@ -51,36 +51,46 @@ async function ingestSAST(req, res) {
       });
     }
 
-    const runId = payload.run?.runId;
+    const runId = payload.run?.runId || payload.runId;
     if (!runId) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields"
+        message: "Missing required fields: runId"
       });
     }
 
+    const fallbackSummary = payload.result?.summary || {};
+    const fallbackTopFindings = payload.result?.topFindings || [];
+    const fallbackReportContent = payload.result || payload;
+
     const normalizedPayload = {
-      source: "github-actions",
+      source: payload.source || "github-actions",
       scanType: "SAST",
       repo: repoObj,
       run: {
         runId,
-        status: payload.run?.status || "completed",
-        timestamp: payload.run?.timestamp || new Date().toISOString(),
-        branch: payload.run?.branch || null,
-        commitSha: payload.run?.commitSha || null,
-        toolName: payload.run?.toolName || "unknown",
-        toolVersion: payload.run?.toolVersion || null
+        status: payload.run?.status || payload.status || "completed",
+        timestamp: payload.run?.timestamp || payload.timestamp || new Date().toISOString(),
+        branch: payload.run?.branch || payload.branch || null,
+        commitSha: payload.run?.commitSha || payload.commitSha || null,
+        toolName: payload.run?.toolName || payload.toolName || "semgrep",
+        toolVersion: payload.run?.toolVersion || payload.toolVersion || null
       },
       summary: {
-        riskScore: payload.summary?.riskScore,
-        severityCounts: payload.summary?.severityCounts,
-        totalFindings: payload.summary?.totalFindings || 0
+        riskScore: payload.summary?.riskScore ?? fallbackSummary.riskScore ?? 0,
+        severityCounts: payload.summary?.severityCounts || fallbackSummary.severityCounts || {
+          critical: 0,
+          high: 0,
+          medium: 0,
+          low: 0
+        },
+        totalFindings: payload.summary?.totalFindings ?? fallbackSummary.totalFindings ?? 0
       },
-      topFindings: payload.topFindings || [],
+      topFindings: payload.topFindings || fallbackTopFindings,
+      rawReportS3Key: payload.rawReportS3Key || payload.reportS3Key || null,
       report: {
         format: payload.report?.format || "json",
-        content: payload.report?.content || payload
+        content: payload.report?.content || fallbackReportContent
       }
     };
 
@@ -171,11 +181,13 @@ async function ingestPentest(req, res) {
       topFindings = detailedResults
         .filter((item) => item.status !== "PASS")
         .map((item) => ({
-          id: item.id,
-          name: item.name,
-          severity: item.severity,
-          status: item.status,
-          details: item.details
+          title: item.name || item.id || "Pentest finding",
+          severity: item.severity || "medium",
+          location: item.endpoint || item.path || item.target || "runtime test",
+          recommendation:
+            item.details ||
+            item.recommendation ||
+            `Investigate status: ${item.status || "unknown"}`
         }));
 
       totalFindings = topFindings.length;

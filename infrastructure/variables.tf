@@ -67,8 +67,9 @@ variable "desired_count" {
 }
 
 variable "pentest_target_url" {
-  description = "URL of the app to pentest (e.g. vulnerable-node-app ALB)"
+  description = "Optional override for pentest TARGET_URL. Leave empty to use the Juice Shop ALB deployed in this stack (see juiceshop_url output)."
   type        = string
+  default     = ""
 }
 
 variable "pentest_repo_name" {
