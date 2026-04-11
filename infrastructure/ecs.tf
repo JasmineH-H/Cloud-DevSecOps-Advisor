@@ -106,27 +106,6 @@ resource "aws_ecs_task_definition" "backend" {
   })
 }
 
-resource "aws_dynamodb_table" "scan_results" {
-  name         = "${var.project_name}-scan-results"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "repo"
-  range_key    = "timestamp"
-
-  attribute {
-    name = "repo"
-    type = "S"
-  }
-
-  attribute {
-    name = "timestamp"
-    type = "S"
-  }
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_name}-scan-results"
-  })
-}
-
 resource "aws_ecs_service" "backend" {
   name            = "${var.project_name}-backend-service"
   cluster         = aws_ecs_cluster.main.id
