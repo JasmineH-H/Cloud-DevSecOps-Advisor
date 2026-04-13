@@ -1,6 +1,6 @@
 const {
-  calculateSastRiskScore,
-  calculatePentestRiskScore,
+  calculateSastRiskScores,
+  calculatePentestRiskScores,
 } = require("../utils/riskCalculator");
 
 const {
@@ -81,8 +81,8 @@ async function ingestSAST(req, res) {
       fallbackSummary.totalFindings ??
       0;
 
-    const normalizedSastRiskScore =
-      calculateSastRiskScore(normalizedSeverityCounts);
+    const { rawRiskScore, riskScore } =
+      calculateSastRiskScores(normalizedSeverityCounts);
 
     const normalizedPayload = {
       source: payload.source || "github-actions",
@@ -99,7 +99,8 @@ async function ingestSAST(req, res) {
         toolVersion: payload.run?.toolVersion || payload.toolVersion || null,
       },
       summary: {
-        riskScore: normalizedSastRiskScore,
+        rawRiskScore,
+        riskScore,
         severityCounts: normalizedSeverityCounts,
         totalFindings: normalizedTotalFindings,
       },
@@ -190,6 +191,7 @@ async function ingestPentest(req, res) {
     }
 
     let topFindings = [];
+    let rawRiskScore = 0;
     let riskScore = 0;
     let totalFindings = 0;
     let normalizedSeverityCounts = {};
@@ -208,7 +210,7 @@ async function ingestPentest(req, res) {
         }));
 
       totalFindings = topFindings.length;
-      riskScore = calculatePentestRiskScore(detailedResults);
+      ({ rawRiskScore, riskScore } = calculatePentestRiskScores(detailedResults));
 
       let errorCount = 0;
       let failCount = 0;
@@ -237,7 +239,7 @@ async function ingestPentest(req, res) {
         const passCount = Number(summary.PASS || 0);
 
         totalFindings = errorCount + failCount + warningCount;
-        riskScore = calculatePentestRiskScore(summary);
+        ({ rawRiskScore, riskScore } = calculatePentestRiskScores(summary));
 
         normalizedSeverityCounts = {
           ERROR: errorCount,
@@ -269,6 +271,7 @@ async function ingestPentest(req, res) {
         toolVersion: null,
       },
       summary: {
+        rawRiskScore,
         riskScore,
         severityCounts: normalizedSeverityCounts,
         totalFindings,
