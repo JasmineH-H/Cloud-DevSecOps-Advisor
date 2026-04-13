@@ -59,7 +59,7 @@ async function ingestSAST(req, res) {
       });
     }
 
-    const fallbackSummary = payload.result?.summary || {};
+    const fallbackSummary = payload.result || {};
     const fallbackTopFindings = payload.result?.topFindings || [];
     const fallbackReportContent = payload.result || payload;
 
