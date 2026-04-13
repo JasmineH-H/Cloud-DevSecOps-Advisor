@@ -13,9 +13,9 @@ function calculateSastRiskScores(severityCounts = {}) {
   };
 
   const rawRiskScore =
-    counts.critical * 10 +
-    counts.high * 7 +
-    counts.medium * 4 +
+    counts.critical * 20 +
+    counts.high * 8 +
+    counts.medium * 3 +
     counts.low * 1;
 
   return {
