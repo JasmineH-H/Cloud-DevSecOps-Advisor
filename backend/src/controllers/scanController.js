@@ -1,4 +1,9 @@
 const {
+  calculateSastRiskScore,
+  calculatePentestRiskScore,
+} = require("../utils/riskCalculator");
+
+const {
   saveScanRecord,
   getRepoOptionsPrimary,
   getScansByRepoPrimary,
@@ -15,29 +20,28 @@ async function ingestSAST(req, res) {
   try {
     const payload = req.body;
 
-    // Normalize repo
     let repoObj;
-    if (typeof payload.repo === 'string') {
-      const [owner, name] = payload.repo.split('/');
+    if (typeof payload.repo === "string") {
+      const [owner, name] = payload.repo.split("/");
       repoObj = {
         fullName: payload.repo,
         owner,
-        name
+        name,
       };
-    } else if (payload.repo && typeof payload.repo === 'object') {
+    } else if (payload.repo && typeof payload.repo === "object") {
       const { fullName, owner, name } = payload.repo;
       if (fullName && (!owner || !name)) {
-        const [derivedOwner, derivedName] = fullName.split('/');
+        const [derivedOwner, derivedName] = fullName.split("/");
         repoObj = {
           fullName,
           owner: owner || derivedOwner,
-          name: name || derivedName
+          name: name || derivedName,
         };
       } else if (owner && name && !fullName) {
         repoObj = {
           fullName: `${owner}/${name}`,
           owner,
-          name
+          name,
         };
       } else {
         repoObj = payload.repo;
@@ -47,7 +51,7 @@ async function ingestSAST(req, res) {
     if (!repoObj || !repoObj.fullName) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields"
+        message: "Missing required fields",
       });
     }
 
@@ -55,13 +59,30 @@ async function ingestSAST(req, res) {
     if (!runId) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: runId"
+        message: "Missing required fields: runId",
       });
     }
 
     const fallbackSummary = payload.result || {};
     const fallbackTopFindings = payload.result?.topFindings || [];
     const fallbackReportContent = payload.result || payload;
+
+    const normalizedSeverityCounts =
+      payload.summary?.severityCounts ||
+      fallbackSummary.severityCounts || {
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+      };
+
+    const normalizedTotalFindings =
+      payload.summary?.totalFindings ??
+      fallbackSummary.totalFindings ??
+      0;
+
+    const normalizedSastRiskScore =
+      calculateSastRiskScore(normalizedSeverityCounts);
 
     const normalizedPayload = {
       source: payload.source || "github-actions",
@@ -70,42 +91,38 @@ async function ingestSAST(req, res) {
       run: {
         runId,
         status: payload.run?.status || payload.status || "completed",
-        timestamp: payload.run?.timestamp || payload.timestamp || new Date().toISOString(),
+        timestamp:
+          payload.run?.timestamp || payload.timestamp || new Date().toISOString(),
         branch: payload.run?.branch || payload.branch || null,
         commitSha: payload.run?.commitSha || payload.commitSha || null,
         toolName: payload.run?.toolName || payload.toolName || "semgrep",
-        toolVersion: payload.run?.toolVersion || payload.toolVersion || null
+        toolVersion: payload.run?.toolVersion || payload.toolVersion || null,
       },
       summary: {
-        riskScore: payload.summary?.riskScore ?? fallbackSummary.riskScore ?? 0,
-        severityCounts: payload.summary?.severityCounts || fallbackSummary.severityCounts || {
-          critical: 0,
-          high: 0,
-          medium: 0,
-          low: 0
-        },
-        totalFindings: payload.summary?.totalFindings ?? fallbackSummary.totalFindings ?? 0
+        riskScore: normalizedSastRiskScore,
+        severityCounts: normalizedSeverityCounts,
+        totalFindings: normalizedTotalFindings,
       },
       topFindings: payload.topFindings || fallbackTopFindings,
       rawReportS3Key: payload.rawReportS3Key || payload.reportS3Key || null,
       report: {
         format: payload.report?.format || "json",
-        content: payload.report?.content || fallbackReportContent
-      }
+        content: payload.report?.content || fallbackReportContent,
+      },
     };
 
     const savedRecord = await saveScanRecord(normalizedPayload);
 
     return res.status(200).json({
       success: true,
-      message: "Scan ingested successfully - updated-backend-v1",
-      data: savedRecord
+      message: "Scan ingested successfully - updated-backend-v2",
+      data: savedRecord,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Failed to process ingest payload",
-      error: error.message
+      error: error.message,
     });
   }
 }
@@ -119,45 +136,46 @@ async function ingestPentest(req, res) {
     const summary = payload.summary;
     const reportS3Key = payload.reportS3Key;
     const detailedResults = payload.results?.results || [];
-    const hasDetailedResults = payload.results?.results && Array.isArray(payload.results.results);
+    const hasDetailedResults =
+      payload.results?.results && Array.isArray(payload.results.results);
 
     if (!repoValue || !runId) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields"
+        message: "Missing required fields",
       });
     }
 
     let repoObj;
-    if (typeof repoValue === 'string') {
-      if (repoValue.includes('/')) {
-        const [owner, name] = repoValue.split('/');
+    if (typeof repoValue === "string") {
+      if (repoValue.includes("/")) {
+        const [owner, name] = repoValue.split("/");
         repoObj = {
           fullName: repoValue,
           owner,
-          name
+          name,
         };
       } else {
         repoObj = {
           fullName: `unknown/${repoValue}`,
           owner: "unknown",
-          name: repoValue
+          name: repoValue,
         };
       }
-    } else if (repoValue && typeof repoValue === 'object') {
+    } else if (repoValue && typeof repoValue === "object") {
       const { fullName, owner, name } = repoValue;
       if (fullName && (!owner || !name)) {
-        const [derivedOwner, derivedName] = fullName.split('/');
+        const [derivedOwner, derivedName] = fullName.split("/");
         repoObj = {
           fullName,
           owner: owner || derivedOwner || "unknown",
-          name: name || derivedName || fullName
+          name: name || derivedName || fullName,
         };
       } else if (owner && name && !fullName) {
         repoObj = {
           fullName: `${owner}/${name}`,
           owner,
-          name
+          name,
         };
       } else {
         repoObj = payload.repo;
@@ -167,17 +185,16 @@ async function ingestPentest(req, res) {
     if (!repoObj || !repoObj.fullName) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields"
+        message: "Missing required fields",
       });
     }
 
-    // Handle topFindings and riskScore based on payload format
     let topFindings = [];
     let riskScore = 0;
     let totalFindings = 0;
+    let normalizedSeverityCounts = {};
 
     if (hasDetailedResults) {
-      // Older format with detailed results
       topFindings = detailedResults
         .filter((item) => item.status !== "PASS")
         .map((item) => ({
@@ -187,41 +204,52 @@ async function ingestPentest(req, res) {
           recommendation:
             item.details ||
             item.recommendation ||
-            `Investigate status: ${item.status || "unknown"}`
+            `Investigate status: ${item.status || "unknown"}`,
         }));
 
       totalFindings = topFindings.length;
+      riskScore = calculatePentestRiskScore(detailedResults);
 
-      riskScore = typeof summary?.riskScore === 'number'
-        ? summary.riskScore
-        : Math.min(
-            100,
-            (detailedResults.filter((item) => item.status === "ERROR").length * 25) +
-            (detailedResults.filter((item) => item.status === "FAIL").length * 20) +
-            (detailedResults.filter((item) => item.status === "WARNING").length * 10)
-          );
+      let errorCount = 0;
+      let failCount = 0;
+      let warningCount = 0;
+
+      for (const item of detailedResults) {
+        const status = String(item?.status || "").toUpperCase();
+        if (status === "ERROR") errorCount += 1;
+        else if (status === "FAIL") failCount += 1;
+        else if (status === "WARNING") warningCount += 1;
+      }
+
+      normalizedSeverityCounts = {
+        ERROR: errorCount,
+        FAIL: failCount,
+        WARNING: warningCount,
+        PASS: Number(summary?.PASS || 0),
+      };
     } else {
-      // New format: summary-only payload
       topFindings = [];
-      
-      // Calculate riskScore and totalFindings from summary counts
-      if (summary && typeof summary === 'object') {
-        const errorCount = summary.ERROR || 0;
-        const failCount = summary.FAIL || 0;
-        const warningCount = summary.WARNING || 0;
-        
+
+      if (summary && typeof summary === "object") {
+        const errorCount = Number(summary.ERROR || 0);
+        const failCount = Number(summary.FAIL || 0);
+        const warningCount = Number(summary.WARNING || 0);
+        const passCount = Number(summary.PASS || 0);
+
         totalFindings = errorCount + failCount + warningCount;
-        
-        riskScore = Math.min(
-          100,
-          (errorCount * 25) + (failCount * 20) + (warningCount * 10)
-        );
+        riskScore = calculatePentestRiskScore(summary);
+
+        normalizedSeverityCounts = {
+          ERROR: errorCount,
+          FAIL: failCount,
+          WARNING: warningCount,
+          PASS: passCount,
+        };
       }
     }
 
-    // Build report content with reportS3Key preserved
     const reportContent = {
-      ...payload
+      ...payload,
     };
     if (reportS3Key) {
       reportContent.reportS3Key = reportS3Key;
@@ -238,33 +266,33 @@ async function ingestPentest(req, res) {
         branch: null,
         commitSha: null,
         toolName: payload.tool || "pentest-lambda",
-        toolVersion: null
+        toolVersion: null,
       },
       summary: {
         riskScore,
-        severityCounts: summary || {},
-        totalFindings
+        severityCounts: normalizedSeverityCounts,
+        totalFindings,
       },
       topFindings,
       rawReportS3Key: reportS3Key || null,
       report: {
         format: "json",
-        content: reportContent
-      }
+        content: reportContent,
+      },
     };
 
     const savedRecord = await saveScanRecord(normalizedPayload);
 
     return res.status(200).json({
       success: true,
-      message: "Pentest scan ingested successfully - updated-backend-v1",
-      data: savedRecord
+      message: "Pentest scan ingested successfully - updated-backend-v2",
+      data: savedRecord,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Failed to process ingest payload",
-      error: error.message
+      error: error.message,
     });
   }
 }
@@ -278,13 +306,13 @@ async function getRepoScans(req, res) {
     return res.status(200).json({
       success: true,
       count: scans.length,
-      data: scans
+      data: scans,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Failed to query scans",
-      error: error.message
+      error: error.message,
     });
   }
 }
@@ -298,19 +326,19 @@ async function getLatestRepoScan(req, res) {
     if (!latestScan) {
       return res.status(404).json({
         success: false,
-        message: "No scan records found for this repository"
+        message: "No scan records found for this repository",
       });
     }
 
     return res.status(200).json({
       success: true,
-      data: latestScan
+      data: latestScan,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Failed to query latest scan",
-      error: error.message
+      error: error.message,
     });
   }
 }
@@ -324,19 +352,19 @@ async function getScanDetail(req, res) {
     if (!scan) {
       return res.status(404).json({
         success: false,
-        message: "Scan record not found"
+        message: "Scan record not found",
       });
     }
 
     return res.status(200).json({
       success: true,
-      data: scan
+      data: scan,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Failed to query scan detail",
-      error: error.message
+      error: error.message,
     });
   }
 }
@@ -350,19 +378,19 @@ async function getDashboardSummary(req, res) {
     if (!summary.latestSast && !summary.latestPentest) {
       return res.status(404).json({
         success: false,
-        message: "No scan records found for this repository"
+        message: "No scan records found for this repository",
       });
     }
 
     return res.status(200).json({
       success: true,
-      data: summary
+      data: summary,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Failed to build dashboard summary",
-      error: error.message
+      error: error.message,
     });
   }
 }
@@ -374,7 +402,7 @@ function getRepoDynamoItems(req, res) {
   return res.status(200).json({
     success: true,
     count: items.length,
-    data: items
+    data: items,
   });
 }
 
@@ -385,13 +413,13 @@ function getScanDynamoItem(req, res) {
   if (!item) {
     return res.status(404).json({
       success: false,
-      message: "DynamoDB item not found for this runId"
+      message: "DynamoDB item not found for this runId",
     });
   }
 
   return res.status(200).json({
     success: true,
-    data: item
+    data: item,
   });
 }
 
@@ -400,7 +428,7 @@ function getAwsDynamoStatus(req, res) {
 
   return res.status(200).json({
     success: true,
-    data: status
+    data: status,
   });
 }
 
@@ -409,7 +437,7 @@ function getAwsS3Status(req, res) {
 
   return res.status(200).json({
     success: true,
-    data: status
+    data: status,
   });
 }
 
@@ -419,13 +447,13 @@ async function getRepos(req, res) {
 
     return res.status(200).json({
       success: true,
-      data: repoOptions
+      data: repoOptions,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Failed to retrieve repositories from S3",
-      error: error.message
+      error: error.message,
     });
   }
 }
@@ -441,5 +469,5 @@ module.exports = {
   getScanDynamoItem,
   getAwsDynamoStatus,
   getAwsS3Status,
-  getRepos
+  getRepos,
 };
