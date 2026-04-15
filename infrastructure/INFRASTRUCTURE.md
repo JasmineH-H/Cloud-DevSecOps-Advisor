@@ -153,14 +153,14 @@ Manual fallback:
 
 After prerequisites + Terraform output-based GitHub variables are set, run:
 
-```bash
-./scripts/deploy_all.sh
-```
-
-Non-interactive option:
 
 ```bash
 ./scripts/deploy_all.sh --auto-approve
+```
+
+Interactive option:
+```bash
+./scripts/deploy_all.sh
 ```
 
 Infra only (recommended when backend/frontend are deployed by GitHub Actions):
