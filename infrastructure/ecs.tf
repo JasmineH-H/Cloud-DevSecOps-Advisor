@@ -63,6 +63,26 @@ resource "aws_ecs_task_definition" "backend" {
         {
           name  = "SCAN_RESULTS_TABLE"
           value = aws_dynamodb_table.scan_results.name
+        },
+        {
+          name  = "PENTEST_LAMBDA_NAME"
+          value = aws_lambda_function.pentest_trigger.function_name
+        },
+        {
+          name  = "PENTEST_SCHEDULE_RULE"
+          value = aws_cloudwatch_event_rule.pentest_schedule.name
+        },
+        {
+          name  = "ENABLE_DEBUG_ROUTES"
+          value = "false"
+        },
+        {
+          name  = "INGEST_RATE_LIMIT_WINDOW_MS"
+          value = "60000"
+        },
+        {
+          name  = "INGEST_RATE_LIMIT_MAX"
+          value = "60"
         }
       ]
 

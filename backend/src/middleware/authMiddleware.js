@@ -29,6 +29,44 @@ function verifyIngestToken(expectedToken) {
   };
 }
 
+function verifyDebugToken(expectedToken) {
+  return function (req, res, next) {
+    // Debug endpoints are disabled unless both flag + token are configured.
+    if (process.env.ENABLE_DEBUG_ROUTES !== "true") {
+      return res.status(404).json({
+        success: false,
+        message: "Not found"
+      });
+    }
+
+    if (!expectedToken) {
+      return res.status(503).json({
+        success: false,
+        message: "Debug routes are not configured"
+      });
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        message: "Missing or invalid Authorization header"
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+    if (token !== expectedToken) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid debug token"
+      });
+    }
+
+    next();
+  };
+}
+
 module.exports = {
-  verifyIngestToken
+  verifyIngestToken,
+  verifyDebugToken
 };

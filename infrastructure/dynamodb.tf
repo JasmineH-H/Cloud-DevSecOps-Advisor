@@ -1,5 +1,5 @@
 resource "aws_dynamodb_table" "scan_results" {
-  name         = "ScanResults"
+  name         = local.scan_results_table_name
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "repo"
   range_key    = "timestamp"
@@ -22,10 +22,11 @@ resource "aws_dynamodb_table" "scan_results" {
   global_secondary_index {
     name            = "runId-index"
     hash_key        = "runId"
+    range_key       = "timestamp"
     projection_type = "ALL"
   }
 
   tags = merge(local.common_tags, {
-    Name = "ScanResults"
+    Name = local.scan_results_table_name
   })
 }

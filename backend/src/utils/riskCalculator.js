@@ -1,3 +1,8 @@
+const {
+  SAST_SEVERITY_WEIGHTS,
+  PENTEST_STATUS_WEIGHTS
+} = require("../config/constants");
+
 function normalizeRiskScore(rawScore = 0) {
   const raw = Number(rawScore || 0);
   const normalized = 100 * (1 - Math.exp(-raw / 40));
@@ -13,10 +18,10 @@ function calculateSastRiskScores(severityCounts = {}) {
   };
 
   const rawRiskScore =
-    counts.critical * 20 +
-    counts.high * 8 +
-    counts.medium * 3 +
-    counts.low * 1;
+    counts.critical * SAST_SEVERITY_WEIGHTS.critical +
+    counts.high * SAST_SEVERITY_WEIGHTS.high +
+    counts.medium * SAST_SEVERITY_WEIGHTS.medium +
+    counts.low * SAST_SEVERITY_WEIGHTS.low;
 
   return {
     rawRiskScore,
@@ -43,9 +48,9 @@ function calculatePentestRiskScores(summaryOrResults = {}) {
   }
 
   const rawRiskScore =
-    errorCount * 25 +
-    failCount * 20 +
-    warningCount * 10;
+    errorCount * PENTEST_STATUS_WEIGHTS.ERROR +
+    failCount * PENTEST_STATUS_WEIGHTS.FAIL +
+    warningCount * PENTEST_STATUS_WEIGHTS.WARNING;
 
   return {
     rawRiskScore,

@@ -60,8 +60,9 @@ Save and exit:
 
 Before building the backend image, log in to ECR:
 ```
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 aws ecr get-login-password --region us-east-1 \
-| docker login --username AWS --password-stdin 714234925361.dkr.ecr.us-east-1.amazonaws.com
+| docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com
 ```
 You should see:
 Login Succeeded
@@ -89,8 +90,8 @@ Important outputs include:
 	•	backend_ecr_url
 example:
 alb_dns_name = "devsecops-advisor-alb-1871069195.us-east-1.elb.amazonaws.com"
-frontend_bucket_name = "devsecops-advisor-frontend-714234925361"
-frontend_website_url = "devsecops-advisor-frontend-714234925361.s3-website-us-east-1.amazonaws.com"
+frontend_bucket_name = "devsecops-advisor-frontend-<your-account-id>"
+frontend_website_url = "devsecops-advisor-frontend-<your-account-id>.s3-website-us-east-1.amazonaws.com"
 
 ### Part 3 — Build and deploy backend
 
@@ -99,10 +100,11 @@ frontend_website_url = "devsecops-advisor-frontend-714234925361.s3-website-us-ea
 From the backend folder:
 ```
 cd ../backend
+BACKEND_ECR=$(cd ../infrastructure && terraform output -raw backend_ecr_url)
 
 docker buildx build \
   --platform linux/amd64 \
-  -t 714234925361.dkr.ecr.us-east-1.amazonaws.com/devsecops-advisor-backend:latest \
+  -t "${BACKEND_ECR}:latest" \
   . \
   --push
 ```
@@ -141,22 +143,23 @@ From the project root:
 ```
 cd ../frontend
 npm install
-VITE_API_URL=http://devsecops-advisor-alb-1871069195.us-east-1.elb.amazonaws.com npm run build
+ALB=$(cd ../infrastructure && terraform output -raw alb_dns_name)
+VITE_API_URL=http://${ALB} npm run build
 ```
-Replace the URL with your actual alb_dns_name.
-Example: VITE_API_URL=http://YOUR-ALB-DNS npm run build
+This command uses your current Terraform `alb_dns_name`.
 
 **Step 2: Upload to S3**
 ```
-aws s3 sync dist/ s3://devsecops-advisor-frontend-714234925361 --delete
+FRONTEND_BUCKET=$(cd ../infrastructure && terraform output -raw frontend_bucket_name)
+aws s3 sync dist/ "s3://${FRONTEND_BUCKET}" --delete
 ```
-Replace the bucket name with your actual frontend_bucket_name.
+This command uses your current Terraform `frontend_bucket_name`.
 
 
 **Step 3: Open the dashboard**
 
 Use the Terraform output: frontend_website_url
-example: http://devsecops-advisor-frontend-714234925361.s3-website-us-east-1.amazonaws.com
+example: http://devsecops-advisor-frontend-<your-account-id>.s3-website-us-east-1.amazonaws.com
 
 ### Part 6 — Target repository setup
 
@@ -193,9 +196,8 @@ Add:
 	•	TARGET_URL (required for Pentest)
 
 Example values:
-BACKEND_API_URL = http://devsecops-advisor-alb-1871069195.us-east-1.elb.amazonaws.com
-S3_BUCKET = devsecops-advisor-reports-714234925361
+BACKEND_API_URL = http://<your-alb-dns-name>
+S3_BUCKET = <terraform output -raw reports_s3_bucket>
 TARGET_URL = http://PUBLIC-TARGET-APP-URL
-
 
 

@@ -15,7 +15,9 @@ function buildRunGsiSk(timestamp) {
 }
 
 function buildReportS3Key(record) {
-  return `reports/${record.owner}/${record.name}/${record.scanType}/${record.runId}.json`;
+  const repoPath = record.repo || `${record.owner}/${record.name}`;
+  const scanTypePath = String(record.scanType || "").toLowerCase();
+  return `reports/${repoPath}/${scanTypePath}/${record.runId}.json`;
 }
 
 function mapRecordToDynamoItem(record) {

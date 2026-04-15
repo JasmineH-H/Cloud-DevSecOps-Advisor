@@ -15,6 +15,11 @@ const {
 } = require("../services/scanService");
 const { getDynamoClientStatus } = require("../services/dynamoService");
 const { getS3ClientStatus } = require("../services/s3Service");
+const {
+  invokePentestNow,
+  updatePentestSchedule,
+  getPentestSchedule
+} = require("../services/pentestControlService");
 
 async function ingestSAST(req, res) {
   try {
@@ -347,7 +352,14 @@ async function getLatestRepoScan(req, res) {
 }
 
 async function getScanDetail(req, res) {
-  const { runId } = req.params;
+  const runId = req.query.runId || req.params.runId;
+
+  if (!runId) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing required query parameter: runId",
+    });
+  }
 
   try {
     const scan = await getScanByRunIdPrimary(runId);
@@ -426,8 +438,8 @@ function getScanDynamoItem(req, res) {
   });
 }
 
-function getAwsDynamoStatus(req, res) {
-  const status = getDynamoClientStatus();
+async function getAwsDynamoStatus(req, res) {
+  const status = await getDynamoClientStatus();
 
   return res.status(200).json({
     success: true,
@@ -435,8 +447,8 @@ function getAwsDynamoStatus(req, res) {
   });
 }
 
-function getAwsS3Status(req, res) {
-  const status = getS3ClientStatus();
+async function getAwsS3Status(req, res) {
+  const status = await getS3ClientStatus();
 
   return res.status(200).json({
     success: true,
@@ -461,6 +473,65 @@ async function getRepos(req, res) {
   }
 }
 
+async function runPentestNow(req, res) {
+  const { targetUrl, repoName } = req.body || {};
+
+  try {
+    const result = await invokePentestNow({ targetUrl, repoName });
+    return res.status(202).json({
+      success: true,
+      message: "Pentest task accepted for immediate execution.",
+      data: result
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: "Failed to trigger pentest immediately.",
+      error: error.message
+    });
+  }
+}
+
+async function schedulePentest(req, res) {
+  const { targetUrl, repoName, scheduleExpression } = req.body || {};
+
+  try {
+    const result = await updatePentestSchedule({
+      targetUrl,
+      repoName,
+      scheduleExpression
+    });
+    return res.status(200).json({
+      success: true,
+      message: "Pentest schedule updated.",
+      data: result
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: "Failed to update pentest schedule.",
+      error: error.message
+    });
+  }
+}
+
+async function getPentestScheduleConfig(req, res) {
+  const repoName = String(req.query?.repoName || "").trim();
+  try {
+    const result = await getPentestSchedule({ repoName });
+    return res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: "Failed to retrieve pentest schedule.",
+      error: error.message
+    });
+  }
+}
+
 module.exports = {
   ingestSAST,
   ingestPentest,
@@ -473,4 +544,7 @@ module.exports = {
   getAwsDynamoStatus,
   getAwsS3Status,
   getRepos,
+  runPentestNow,
+  schedulePentest,
+  getPentestScheduleConfig
 };

@@ -1,17 +1,56 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 echo "Loading demo data..."
 
-BASE_URL="http://localhost:3000"
+BASE_URL="${BASE_URL:-http://localhost:3000}"
+SAST_TOKEN="${INGEST_TOKEN_SAST:-dev-sast-token-123}"
+PENTEST_TOKEN="${INGEST_TOKEN_PENTEST:-dev-pentest-token-456}"
+HAS_ERRORS=0
+
+post_ingest() {
+  local endpoint="$1"
+  local token="$2"
+  local payload="$3"
+  local response=""
+  local body=""
+  local status=""
+
+  if ! response="$(curl -sS -w '\n%{http_code}' -X POST "${BASE_URL}${endpoint}" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d "${payload}")"; then
+    echo "Warning: request to ${endpoint} failed (network/curl error)." >&2
+    HAS_ERRORS=1
+    return
+  fi
+
+  body="$(printf "%s" "${response}" | sed '$d')"
+  status="$(printf "%s" "${response}" | tail -n 1)"
+
+  if [[ ! "${status}" =~ ^[0-9]{3}$ ]]; then
+    echo "Warning: request to ${endpoint} returned an unknown status: ${status}" >&2
+    HAS_ERRORS=1
+    return
+  fi
+
+  if (( status < 200 || status >= 300 )); then
+    echo "Warning: request to ${endpoint} returned HTTP ${status}" >&2
+    if [[ -n "${body}" ]]; then
+      echo "Response: ${body}" >&2
+    fi
+    HAS_ERRORS=1
+    return
+  fi
+
+  echo "OK ${endpoint}: HTTP ${status}"
+}
 
 ########################################
 # Repo A older SAST
 ########################################
 
-curl -X POST $BASE_URL/ingest/sast \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer dev-sast-token-123" \
-  -d '{
+post_ingest "/ingest/sast" "${SAST_TOKEN}" '{
     "source": "github-actions",
     "scanType": "SAST",
     "repo": {
@@ -56,10 +95,7 @@ curl -X POST $BASE_URL/ingest/sast \
 # Repo A latest SAST
 ########################################
 
-curl -X POST $BASE_URL/ingest/sast \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer dev-sast-token-123" \
-  -d '{
+post_ingest "/ingest/sast" "${SAST_TOKEN}" '{
     "source": "github-actions",
     "scanType": "SAST",
     "repo": {
@@ -104,10 +140,7 @@ curl -X POST $BASE_URL/ingest/sast \
 # Repo A Pentest
 ########################################
 
-curl -X POST $BASE_URL/ingest/pentest \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer dev-pentest-token-456" \
-  -d '{
+post_ingest "/ingest/pentest" "${PENTEST_TOKEN}" '{
     "source": "ecs-pentest-task",
     "scanType": "PENTEST",
     "repo": {
@@ -152,10 +185,7 @@ curl -X POST $BASE_URL/ingest/pentest \
 # Repo B SAST
 ########################################
 
-curl -X POST $BASE_URL/ingest/sast \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer dev-sast-token-123" \
-  -d '{
+post_ingest "/ingest/sast" "${SAST_TOKEN}" '{
     "source": "github-actions",
     "scanType": "SAST",
     "repo": {
@@ -196,4 +226,9 @@ curl -X POST $BASE_URL/ingest/sast \
     }
   }'
 
-echo "Demo data loaded!"
+if [[ "${HAS_ERRORS}" -eq 1 ]]; then
+  echo "Demo data load finished with warnings. Check messages above." >&2
+  exit 1
+fi
+
+echo "Demo data loaded successfully."

@@ -30,3 +30,8 @@ frontend/.env.*.local
 lambda/pentest-trigger/node_modules/
 lambda/pentest-trigger/pentest-trigger.zip
 
+# Output and response files
+infrastructure/output.json                                                                                                                                         
+infrastructure/response.json
+output.json                                                                                                                                                        
+response.json 

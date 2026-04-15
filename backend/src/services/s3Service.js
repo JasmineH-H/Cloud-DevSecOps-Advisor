@@ -1,11 +1,23 @@
-const { PutObjectCommand, ListObjectsV2Command, GetObjectCommand } = require("@aws-sdk/client-s3");
+const {
+  PutObjectCommand,
+  ListObjectsV2Command,
+  GetObjectCommand,
+  ListBucketsCommand
+} = require("@aws-sdk/client-s3");
 const { s3Client } = require("../config/aws");
 
-const BUCKET_NAME = process.env.REPORTS_BUCKET || "devsecops-advisor-reports-714234925361";
+const BUCKET_NAME = process.env.REPORTS_BUCKET || process.env.S3_BUCKET;
+
+function requireBucketName() {
+  if (!BUCKET_NAME) {
+    throw new Error("Missing reports bucket env var. Set REPORTS_BUCKET (or S3_BUCKET).");
+  }
+  return BUCKET_NAME;
+}
 
 async function uploadReportToS3(key, data) {
   const command = new PutObjectCommand({
-    Bucket: BUCKET_NAME,
+    Bucket: requireBucketName(),
     Key: key,
     Body: JSON.stringify(data, null, 2),
     ContentType: "application/json"
@@ -15,29 +27,24 @@ async function uploadReportToS3(key, data) {
 }
 
 async function listReportObjects(prefix) {
-  try {
-    const command = new ListObjectsV2Command({
-      Bucket: BUCKET_NAME,
-      Prefix: prefix
-    });
+  const command = new ListObjectsV2Command({
+    Bucket: requireBucketName(),
+    Prefix: prefix
+  });
 
-    const response = await s3Client.send(command);
-    
-    if (!response.Contents) {
-      return [];
-    }
-
-    return response.Contents.map((obj) => obj.Key);
-  } catch (error) {
-    console.error("Error listing S3 objects:", error);
+  const response = await s3Client.send(command);
+  
+  if (!response.Contents) {
     return [];
   }
+
+  return response.Contents.map((obj) => obj.Key);
 }
 
 async function getJsonObject(key) {
   try {
     const command = new GetObjectCommand({
-      Bucket: BUCKET_NAME,
+      Bucket: requireBucketName(),
       Key: key
     });
 
@@ -52,8 +59,21 @@ async function getJsonObject(key) {
   }
 }
 
+async function getS3ClientStatus() {
+  try {
+    await s3Client.send(new ListBucketsCommand({}));
+    return { status: "ok" };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error.message
+    };
+  }
+}
+
 module.exports = {
   uploadReportToS3,
   listReportObjects,
-  getJsonObject
+  getJsonObject,
+  getS3ClientStatus
 };

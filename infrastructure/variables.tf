@@ -89,3 +89,21 @@ variable "pentest_repo_name" {
   type        = string
   default     = "vulnerable-node-app"
 }
+
+variable "scan_results_table_name" {
+  description = "Optional DynamoDB table name for scan results. Leave empty to use <project_name>-scan-results."
+  type        = string
+  default     = ""
+}
+
+variable "alb_certificate_arn" {
+  description = "Optional ACM certificate ARN. When set, ALB serves HTTPS on 443 and redirects HTTP to HTTPS."
+  type        = string
+  default     = ""
+}
+
+variable "s3_force_destroy" {
+  description = "Whether S3 buckets can be force-deleted with all objects during terraform destroy."
+  type        = bool
+  default     = false
+}

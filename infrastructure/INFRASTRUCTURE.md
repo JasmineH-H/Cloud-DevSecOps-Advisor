@@ -1,35 +1,55 @@
 # End-to-end: AWS + Terraform + containers
 
-Use this order. **Yes — you need Terraform first** to create VPC, ALB, ECS, ECR, DynamoDB, S3, Lambda, and Juice Shop. After that you **build and push Docker images** and **refresh the ECS service** so tasks pull `:latest`.
+Run these commands from the repo root: `Cloud-DevSecOps-Advisor/`.
+
+## Order (do this in sequence)
+
+1. Configure AWS credentials + Secrets Manager.
+2. Run `terraform apply` in `infrastructure/`.
+3. Read Terraform outputs.
+4. Use those output values to configure GitHub variables.
+5. Run `./scripts/deploy_all.sh` (this handles image push, ECS redeploy, and frontend sync).
 
 ---
 
-## 0. Prerequisites (Learner Lab)
+## Prerequisites (before Terraform)
 
-1. Install [Terraform](https://www.terraform.io/downloads) and [AWS CLI](https://aws.amazon.com/cli/).
-2. Configure credentials **every time the lab session rotates**:
+- Install [Terraform](https://www.terraform.io/downloads), [AWS CLI](https://aws.amazon.com/cli/), Docker, Node.js, and [GitHub CLI (`gh`)](https://cli.github.com/).
+- Configure AWS credentials (Learner Lab rotates tokens):
 
 ```bash
 aws configure
 # Access Key ID, Secret Access Key, Session Token, region us-east-1, output json
 ```
 
-Or export `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`.
+- Authenticate GitHub CLI:
 
-3. **Secrets Manager** — Terraform only *reads* these names (see `iam.tf`). Create them **before** `terraform apply`:
+```bash
+gh auth login
+```
 
-| Secret name        | Value (plain text) |
-|--------------------|--------------------|
-| `devsecops/pentest` | Same string as Bearer token for `POST /ingest/pentest` |
-| `devsecops/sast`    | Same string as Bearer token for `POST /ingest/sast`   |
+- Create Secrets Manager secrets used by Terraform:
 
-Use the AWS console: **Secrets Manager → Store a new secret → Other type of secret → Plaintext**.
+Required: automate secret creation/update:
 
-4. **IAM role name** — This project expects the Learner Lab role **`LabRole`** (see `iam.tf`). If your account uses a different execution role for ECS, change `data.aws_iam_role.ecs_task_execution` in `iam.tf`.
+```bash
+./scripts/setup-secrets.sh
+```
+
+This script securely prompts for token values (no echo), writes plaintext secret strings to AWS Secrets Manager, and prints the next GitHub setup checklist. Run this before `terraform apply`.
+
+| Secret name         | Value |
+|---------------------|-------|
+| `devsecops/sast`    | Bearer token for `POST /ingest/sast` |
+| `devsecops/pentest` | Bearer token for `POST /ingest/pentest` |
+
+- Ensure IAM role in this stack matches your lab role (`LabRole` by default in `iam.tf`).
 
 ---
 
-## 1. Deploy infrastructure
+## Run Terraform apply 
+
+From repo root:
 
 ```bash
 cd infrastructure
@@ -38,86 +58,156 @@ terraform plan
 terraform apply
 ```
 
-Optional: copy `terraform.tfvars.example` to `terraform.tfvars` and set `pentest_target_url` only if you **do not** want to scan the **Juice Shop** ALB created in this stack. By default, pentest uses `http://<juiceshop-alb-dns>` automatically.
+Optional: create `terraform.tfvars` from `terraform.tfvars.example` before apply.
+
+If `pentest_target_url` is empty, pentest defaults to the Juice Shop URL created by this stack.
 
 ---
 
-## 2. Push Docker images to ECR
+## Get values from Terraform outputs
 
-Terraform creates two repos: **backend** (Advisor API) and **pentest** (scan tool). Get account and URLs:
+Note: this step is optional. You do **not** need to run it for `./scripts/deploy_all.sh` because that script reads Terraform outputs automatically. Use this section only for manual setup, debugging, or verification.
+
+Still inside `infrastructure/`, run:
 
 ```bash
-export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-export AWS_REGION=us-east-1
-cd infrastructure
+ALB_DNS=$(terraform output -raw alb_dns_name)
+FRONTEND_BUCKET=$(terraform output -raw frontend_bucket_name)
+REPORTS_BUCKET=$(terraform output -raw reports_s3_bucket)
 BACKEND_ECR=$(terraform output -raw backend_ecr_url)
 PENTEST_ECR=$(terraform output -raw pentest_ecr_url)
-cd ..
+CLUSTER_ARN=$(terraform output -raw ecs_cluster_id)
 ```
 
-Log in to ECR:
+You can verify:
 
 ```bash
-aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-```
-
-### Advisor backend (this repo `backend/`)
-
-```bash
-docker buildx build --platform linux/amd64 -t "${BACKEND_ECR}:latest" --push ./backend
-```
-
-### Pentest runner ([SAST-Pentest-Tool](https://github.com/JasmineH-H/SAST-Pentest-Tool) — use the `pentest/` directory where its `Dockerfile` lives)
-
-```bash
-# clone the scan tool repo, then from its pentest/ folder (adjust if Dockerfile path differs):
-cd /path/to/SAST-Pentest-Tool/pentest
-docker buildx build --platform linux/amd64 -t "${PENTEST_ECR}:latest" --push .
+echo "$ALB_DNS"
+echo "$FRONTEND_BUCKET"
+echo "$REPORTS_BUCKET"
 ```
 
 ---
 
-## 3. Force ECS to deploy new images
+## Configure target GitHub repos (recommended: script)
 
-After the first push, tasks may still fail until the service pulls the new image:
+Run once per target repository after `terraform apply`:
+
+```bash
+./scripts/setup-target-repo.sh owner/repo
+./scripts/setup-target-workflow.sh owner/repo
+```
+
+Optional target URL variable (for pentest workflows):
+
+```bash
+./scripts/setup-target-repo.sh owner/repo --target-url https://example.com
+./scripts/setup-target-workflow.sh owner/repo
+```
+
+What this script sets on the target repo:
+
+- Secrets:
+  - `AWS_ACCESS_KEY_ID`
+  - `AWS_SECRET_ACCESS_KEY`
+  - `AWS_SESSION_TOKEN`
+  - `INGEST_TOKEN_SAST`
+  - `INGEST_TOKEN_PENTEST`
+- Variables:
+  - `BACKEND_API_URL` (from Terraform `alb_dns_name`)
+  - `S3_BUCKET` (from Terraform `reports_s3_bucket`)
+  - `TARGET_URL` (only when `--target-url` is provided)
+
+What `setup-target-workflow.sh` does:
+
+- Creates/updates `.github/workflows/sast.yml` in the target repo with the reusable SAST workflow configuration.
+
+Manual fallback:
+
+- `Settings -> Secrets and variables -> Actions` on each target repo.
+
+### Configure this repo (`Cloud-DevSecOps-Advisor`) frontend deploy variables
+
+Recommended:
+
+```bash
+./scripts/setup-advisor-repo.sh
+```
+
+Optional (if you need to target a different repo explicitly):
+
+```bash
+./scripts/setup-advisor-repo.sh --repo owner/repo
+```
+
+Manual fallback:
+
+`Settings -> Secrets and variables -> Actions -> Variables`
+
+- `VITE_API_URL = http://<ALB_DNS>`
+- `FRONTEND_BUCKET = <FRONTEND_BUCKET>`
+
+---
+
+## Deploy application (default path)
+
+After prerequisites + Terraform output-based GitHub variables are set, run:
+
+```bash
+./scripts/deploy_all.sh
+```
+
+Non-interactive option:
+
+```bash
+./scripts/deploy_all.sh --auto-approve
+```
+
+Infra only (recommended when backend/frontend are deployed by GitHub Actions):
+
+```bash
+./scripts/deploy_all.sh --infra-only
+```
+
+Skip only one side:
+
+```bash
+./scripts/deploy_all.sh --skip-backend
+./scripts/deploy_all.sh --skip-frontend
+```
+
+Optional pentest image source override:
+
+```bash
+PENTEST_TOOL_DIR=/path/to/SAST-Pentest-Tool/pentest ./scripts/deploy_all.sh
+```
+
+What `deploy_all.sh` does for you:
+
+- Runs Terraform apply
+- Reads Terraform outputs
+- Optionally logs in to ECR, builds/pushes backend image, and forces ECS backend redeploy
+- Optionally builds and syncs frontend to S3
+
+Verify:
 
 ```bash
 cd infrastructure
-CLUSTER=$(terraform output -raw ecs_cluster_name)
-SERVICE=$(terraform output -raw ecs_service_name)
-aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --force-new-deployment --region "$AWS_REGION"
+ALB_DNS=$(terraform output -raw alb_dns_name)
+curl -s "http://${ALB_DNS}/health"
+terraform output -raw frontend_website_url
 ```
 
 ---
 
-## 4. Verify API
+## Optional checks
 
-```bash
-ALB=$(terraform output -raw alb_dns_name)
-curl -s "http://${ALB}/health"
-```
+- Juice Shop URL: `cd infrastructure && terraform output -raw juiceshop_url`
+- Pentest Lambda name: `cd infrastructure && terraform output -raw pentest_lambda_name`
 
----
+## Manual deploy steps (optional, only if not using deploy_all.sh)
 
-## 5. Frontend (dashboard)
-
-Point the UI at the **same ALB** as the API (browser calls ALB, not localhost).
-
-```bash
-cd frontend
-echo "VITE_API_URL=http://${ALB}" > .env
-npm install
-npm run build
-```
-
-Upload `frontend/dist` to your S3 static website bucket (or run `npm run dev` locally with `VITE_API_URL=http://localhost:3000` while testing the backend on the laptop).
-
----
-
-## 6. Optional checks
-
-- **Juice Shop URL** (pentest target when `pentest_target_url` is empty): `terraform output juiceshop_url`
-- **Manual pentest Lambda**: invoke `terraform output -raw pentest_lambda_name` from the console or CLI (schedule is daily in `pentest.tf`).
+Use these only for debugging or partial reruns. Standard flow is `./scripts/deploy_all.sh`.
 
 ---
 
@@ -127,5 +217,3 @@ Upload `frontend/dist` to your S3 static website bucket (or run `npm run dev` lo
 cd infrastructure
 terraform destroy
 ```
-
-(Typo fixed: **Destroy**, not “Destory”.)

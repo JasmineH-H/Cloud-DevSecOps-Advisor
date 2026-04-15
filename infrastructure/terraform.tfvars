@@ -13,7 +13,7 @@ desired_count         = 1
 sast_secret_name    = "devsecops/sast"
 pentest_secret_name = "devsecops/pentest"
 
-pentest_repo_name = "vulnerable-node-app"
+pentest_repo_name = "SharonHuang77/juice-shop"
 
 # Testing with Juice Shop
 pentest_target_url = "http://devsecops-advisor-juiceshop-alb-576797998.us-east-1.elb.amazonaws.com"

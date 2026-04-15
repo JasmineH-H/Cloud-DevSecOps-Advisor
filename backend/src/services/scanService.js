@@ -1,6 +1,7 @@
 const { addScanRecord, getAllScanRecords } = require("../data/scanStore");
 const { mapRecordToDynamoItem } = require("../utils/dynamoMapper");
 const { formatGitHubComment } = require("../utils/githubCommentFormatter");
+const { SEVERITY_SORT_ORDER } = require("../config/constants");
 const { uploadReportToS3, listReportObjects, getJsonObject } = require("./s3Service");
 const {
   saveToDynamo,
@@ -9,6 +10,11 @@ const {
   getRepoOptionsFromDynamo
 } = require("./dynamoService");
 
+function compareBySeverityDesc(a, b) {
+  const severityA = SEVERITY_SORT_ORDER[a.severity?.toLowerCase()] || 0;
+  const severityB = SEVERITY_SORT_ORDER[b.severity?.toLowerCase()] || 0;
+  return severityB - severityA;
+}
 
 function buildScanResponse(payload) {
   // Returns the FULL normalized record that will be stored in S3
@@ -185,18 +191,7 @@ function buildDashboardSummary(owner, repo) {
     ? formatGitHubComment(latestSast)
     : null;
 
-  const severityOrder = {
-    critical: 4,
-    high: 3,
-    medium: 2,
-    low: 1
-  };
-
-  prioritizedVulnerabilities.sort((a, b) => {
-    const severityA = severityOrder[a.severity?.toLowerCase()] || 0;
-    const severityB = severityOrder[b.severity?.toLowerCase()] || 0;
-    return severityB - severityA;
-  });
+  prioritizedVulnerabilities.sort(compareBySeverityDesc);
 
   return {
     repo: `${owner}/${repo}`,
@@ -308,8 +303,7 @@ async function getRepoOptionsLive() {
 
     return result;
   } catch (error) {
-    console.error("Error getting repo options from S3:", error);
-    return [];
+    throw new Error(`S3_LIST_FAILED:getRepoOptionsLive:${error.message}`);
   }
 }
 
@@ -361,8 +355,7 @@ async function getScansByRepoLive(owner, repo) {
 
     return scans;
   } catch (error) {
-    console.error("Error getting scans by repo from S3:", error);
-    return [];
+    throw new Error(`S3_LIST_FAILED:getScansByRepoLive:${error.message}`);
   }
 }
 
@@ -386,7 +379,7 @@ async function getScanByRunIdLive(runId) {
       try {
         const jsonData = await getJsonObject(key);
         
-        if (jsonData && jsonData.runId === runId) {
+        if (jsonData && String(jsonData.runId) === String(runId)) {
           return {
             repo: jsonData.repo,
             timestamp: jsonData.timestamp,
@@ -413,8 +406,7 @@ async function getScanByRunIdLive(runId) {
 
     return null;
   } catch (error) {
-    console.error("Error getting scan by runId from S3:", error);
-    return null;
+    throw new Error(`S3_LIST_FAILED:getScanByRunIdLive:${error.message}`);
   }
 }
 
@@ -447,18 +439,7 @@ async function buildDashboardSummaryLive(owner, repo) {
     }
   }
 
-  const severityOrder = {
-    critical: 4,
-    high: 3,
-    medium: 2,
-    low: 1
-  };
-
-  prioritizedVulnerabilities.sort((a, b) => {
-    const severityA = severityOrder[a.severity?.toLowerCase()] || 0;
-    const severityB = severityOrder[b.severity?.toLowerCase()] || 0;
-    return severityB - severityA;
-  });
+  prioritizedVulnerabilities.sort(compareBySeverityDesc);
 
   const simulatedGitHubComment = latestSast
     ? formatGitHubComment(latestSast)
@@ -487,7 +468,12 @@ async function getRepoOptionsPrimary() {
     console.warn("[getRepoOptionsPrimary] DynamoDB failed, falling back to S3:", error.message);
   }
   console.log("[getRepoOptionsPrimary] Falling back to S3");
-  return getRepoOptionsLive();
+  try {
+    return await getRepoOptionsLive();
+  } catch (error) {
+    console.error("[getRepoOptionsPrimary] S3 fallback failed:", error.message);
+    throw error;
+  }
 }
 
 async function getScansByRepoPrimary(owner, repo) {
@@ -503,7 +489,12 @@ async function getScansByRepoPrimary(owner, repo) {
     console.warn("[getScansByRepoPrimary] DynamoDB failed, falling back to S3:", error.message);
   }
   console.log("[getScansByRepoPrimary] Falling back to S3 for:", fullName);
-  return getScansByRepoLive(owner, repo);
+  try {
+    return await getScansByRepoLive(owner, repo);
+  } catch (error) {
+    console.error("[getScansByRepoPrimary] S3 fallback failed:", error.message);
+    throw error;
+  }
 }
 
 async function getLatestScanByRepoPrimary(owner, repo) {
@@ -523,7 +514,12 @@ async function getScanByRunIdPrimary(runId) {
     console.warn("[getScanByRunIdPrimary] DynamoDB failed, falling back to S3:", error.message);
   }
   console.log("[getScanByRunIdPrimary] Falling back to S3 for runId:", runId);
-  return getScanByRunIdLive(runId);
+  try {
+    return await getScanByRunIdLive(runId);
+  } catch (error) {
+    console.error("[getScanByRunIdPrimary] S3 fallback failed:", error.message);
+    throw error;
+  }
 }
 
 async function buildDashboardSummaryPrimary(owner, repo) {
@@ -543,12 +539,7 @@ async function buildDashboardSummaryPrimary(owner, repo) {
       prioritizedVulnerabilities.push({ source: "PENTEST", ...finding });
     }
   }
-  const severityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
-  prioritizedVulnerabilities.sort((a, b) => {
-    const severityA = severityOrder[a.severity?.toLowerCase()] || 0;
-    const severityB = severityOrder[b.severity?.toLowerCase()] || 0;
-    return severityB - severityA;
-  });
+  prioritizedVulnerabilities.sort(compareBySeverityDesc);
   const simulatedGitHubComment = latestSast ? formatGitHubComment(latestSast) : null;
   return {
     repo: fullName,
