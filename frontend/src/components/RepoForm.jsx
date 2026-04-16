@@ -7,10 +7,20 @@ function RepoForm({
   repoOptions,
   onOwnerChange,
   onRepoChange,
-  onSubmit
+  onSubmit,
 }) {
   return (
     <form className="repo-form" onSubmit={onSubmit}>
+      <div className="section-heading repo-form-heading">
+        <div>
+          <h2>Choose what to inspect</h2>
+          <p className="section-description">
+            Pick an owner and repository to refresh the overview,
+            vulnerabilities, and history.
+          </p>
+        </div>
+      </div>
+
       <SearchableSelect
         label="Owner"
         placeholder="Search and select owner"
@@ -28,7 +38,9 @@ function RepoForm({
         disabled={!owner}
       />
 
-      <button type="submit">Load Dashboard</button>
+      <div className="repo-form-actions">
+        <button type="submit">Load dashboard</button>
+      </div>
     </form>
   );
 }

@@ -21,7 +21,14 @@ function ScanHistoryTable({ scans, onView, isLoading }) {
 
   return (
     <section className="table-section">
-      <h2>Scan History</h2>
+      <div className="section-heading">
+        <div>
+          <h2>Scan history</h2>
+          <p className="section-description">
+            Review recent scans and open any run for a deeper inspection.
+          </p>
+        </div>
+      </div>
 
       <table>
         <thead>
@@ -45,12 +52,18 @@ function ScanHistoryTable({ scans, onView, isLoading }) {
               <tr key={scan.runId}>
                 <td>{scan.timestamp}</td>
                 <td>{scan.scanType}</td>
-                <td>{scan.status}</td>
+                <td>
+                  <span className="table-status-pill">{scan.status}</span>
+                </td>
                 <td>{scan.riskScore}</td>
                 <td>{scan.branch}</td>
                 <td>{scan.commitSha}</td>
                 <td>
-                  <button type="button" className="view-button" onClick={() => onView(scan.runId)}>
+                  <button
+                    type="button"
+                    className="view-button"
+                    onClick={() => onView(scan.runId)}
+                  >
                     View
                   </button>
                 </td>
@@ -67,7 +80,8 @@ function ScanHistoryTable({ scans, onView, isLoading }) {
       {!isLoading && totalItems > 0 && (
         <div className="table-pagination">
           <span>
-            Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, totalItems)} of {totalItems}
+            Showing {(page - 1) * pageSize + 1}-
+            {Math.min(page * pageSize, totalItems)} of {totalItems}
           </span>
           <div className="table-pagination-controls">
             <button
@@ -77,7 +91,9 @@ function ScanHistoryTable({ scans, onView, isLoading }) {
             >
               Previous
             </button>
-            <span>Page {page} / {totalPages}</span>
+            <span>
+              Page {page} / {totalPages}
+            </span>
             <button
               type="button"
               disabled={page === totalPages}
