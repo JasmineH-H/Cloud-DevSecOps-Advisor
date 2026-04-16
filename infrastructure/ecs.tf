@@ -77,6 +77,10 @@ resource "aws_ecs_task_definition" "backend" {
           value = "false"
         },
         {
+          name  = "DEBUG_API_TOKEN"
+          value = "disabled-debug-token"
+        },
+        {
           name  = "INGEST_RATE_LIMIT_WINDOW_MS"
           value = "60000"
         },

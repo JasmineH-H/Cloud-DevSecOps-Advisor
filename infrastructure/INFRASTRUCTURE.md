@@ -38,16 +38,16 @@ Required: automate secret creation/update:
 
 This script securely prompts for token values (no echo), writes plaintext secret strings to AWS Secrets Manager, and prints the next GitHub setup checklist. Run this before `terraform apply`.
 
-| Secret name         | Value |
-|---------------------|-------|
-| `devsecops/sast`    | Bearer token for `POST /ingest/sast` |
+| Secret name         | Value                                   |
+| ------------------- | --------------------------------------- |
+| `devsecops/sast`    | Bearer token for `POST /ingest/sast`    |
 | `devsecops/pentest` | Bearer token for `POST /ingest/pentest` |
 
 - Ensure IAM role in this stack matches your lab role (`LabRole` by default in `iam.tf`).
 
 ---
 
-## Run Terraform apply 
+## Run Terraform apply
 
 From repo root:
 
@@ -153,12 +153,12 @@ Manual fallback:
 
 After prerequisites + Terraform output-based GitHub variables are set, run:
 
-
 ```bash
 ./scripts/deploy_all.sh --auto-approve
 ```
 
 Interactive option:
+
 ```bash
 ./scripts/deploy_all.sh
 ```

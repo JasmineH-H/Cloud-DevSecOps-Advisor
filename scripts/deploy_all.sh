@@ -132,6 +132,10 @@ if [[ "${SKIP_FRONTEND_DEPLOY}" != "true" ]]; then
   # Step 6: Build frontend with current ALB URL and sync static assets to S3 bucket
   echo "==> Step 6/6: Build + deploy frontend"
   cd "$FRONTEND_DIR"
+  if [[ ! -d "node_modules" ]]; then
+    echo "Installing frontend dependencies..."
+    npm ci
+  fi
   echo "VITE_API_URL=http://${ALB_DNS}" > .env
   npm run build
   aws s3 sync dist/ "s3://${FRONTEND_BUCKET}" --delete >/dev/null

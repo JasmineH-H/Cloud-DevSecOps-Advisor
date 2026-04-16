@@ -73,6 +73,7 @@ prompt_secret() {
   local prompt_label="$1"
   local current_value="${2:-}"
   local value=""
+  local sanitized=""
 
   if [[ -n "$current_value" ]]; then
     value="$current_value"
@@ -86,7 +87,19 @@ prompt_secret() {
     exit 1
   fi
 
-  printf "%s" "$value"
+  # Remove CR/LF and trim surrounding whitespace to avoid invalid header chars downstream.
+  sanitized="$(printf "%s" "$value" | tr -d '\r\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+
+  if [[ -z "$sanitized" ]]; then
+    echo "Secret value cannot be empty after sanitization." >&2
+    exit 1
+  fi
+
+  if [[ "$sanitized" != "$value" ]]; then
+    echo "Note: Sanitized hidden whitespace/newline characters from ${prompt_label}."
+  fi
+
+  printf "%s" "$sanitized"
 }
 
 upsert_secret_plaintext() {
@@ -123,11 +136,16 @@ tf_output_or_fallback() {
   local value=""
 
   if command -v terraform >/dev/null 2>&1 && [[ -d "${INFRA_DIR}" ]] && [[ -f "${INFRA_DIR}/terraform.tfstate" ]]; then
-    if value="$(cd "${INFRA_DIR}" && terraform output -raw "${output_name}" 2>/dev/null)"; then
-      if [[ -n "${value}" ]]; then
-        printf "%s" "${value}"
-        return
-      fi
+    value="$(cd "${INFRA_DIR}" && terraform output -raw "${output_name}" 2>/dev/null || true)"
+
+    # Ignore Terraform warning/error text that can appear on stdout when outputs are unavailable.
+    if [[ -n "${value}" ]] \
+      && [[ "${value}" != *"Warning: No outputs found"* ]] \
+      && [[ "${value}" != *"The output variable requested could not be found"* ]] \
+      && [[ "${value}" != "╷"* ]] \
+      && [[ "${value}" != "╵"* ]]; then
+      printf "%s" "${value}"
+      return
     fi
   fi
 

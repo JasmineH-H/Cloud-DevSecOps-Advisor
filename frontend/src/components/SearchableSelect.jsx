@@ -6,7 +6,7 @@ function SearchableSelect({
   options,
   value,
   onChange,
-  disabled = false
+  disabled = false,
 }) {
   const [search, setSearch] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -18,14 +18,19 @@ function SearchableSelect({
   const filteredOptions = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
-    if (!keyword) {
+    if (
+      !keyword ||
+      (isOpen &&
+        keyword ===
+          String(value || "")
+            .trim()
+            .toLowerCase())
+    ) {
       return options;
     }
 
-    return options.filter((option) =>
-      option.toLowerCase().includes(keyword)
-    );
-  }, [options, search]);
+    return options.filter((option) => option.toLowerCase().includes(keyword));
+  }, [options, search, isOpen, value]);
 
   function handleSelect(option) {
     onChange(option);

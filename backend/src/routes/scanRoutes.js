@@ -52,14 +52,14 @@ router.get("/health", (req, res) => {
 router.post(
   "/ingest/sast",
   sastIngestRateLimit,
-  verifyIngestToken(process.env.INGEST_TOKEN_SAST),
+  verifyIngestToken(process.env.INGEST_TOKEN_SAST, "ingest_token_sast"),
   ingestSAST
 );
 
 router.post(
   "/ingest/pentest",
   pentestIngestRateLimit,
-  verifyIngestToken(process.env.INGEST_TOKEN_PENTEST),
+  verifyIngestToken(process.env.INGEST_TOKEN_PENTEST, "ingest_token_pentest"),
   ingestPentest
 );
 router.get("/repos", getRepos);

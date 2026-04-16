@@ -46,6 +46,24 @@ require_env() {
   fi
 }
 
+hydrate_aws_env_from_config() {
+  # Support users who configured AWS via `aws configure` but did not export env vars.
+  if [[ -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
+    AWS_ACCESS_KEY_ID="$(aws configure get aws_access_key_id 2>/dev/null || true)"
+    export AWS_ACCESS_KEY_ID
+  fi
+
+  if [[ -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+    AWS_SECRET_ACCESS_KEY="$(aws configure get aws_secret_access_key 2>/dev/null || true)"
+    export AWS_SECRET_ACCESS_KEY
+  fi
+
+  if [[ -z "${AWS_SESSION_TOKEN:-}" ]]; then
+    AWS_SESSION_TOKEN="$(aws configure get aws_session_token 2>/dev/null || true)"
+    export AWS_SESSION_TOKEN
+  fi
+}
+
 extract_token_value() {
   local secret_string="$1"
   local json_key="$2"
@@ -134,6 +152,7 @@ require_cmd gh
 require_cmd aws
 require_cmd terraform
 require_cmd python3
+hydrate_aws_env_from_config
 require_env AWS_ACCESS_KEY_ID
 require_env AWS_SECRET_ACCESS_KEY
 require_env AWS_SESSION_TOKEN
