@@ -47,16 +47,16 @@ The system is built using AWS cloud services with a modular design:
 
 https://github.com/JasmineH-H/vulnerable-node-app.git
 
-### Scan Tool
+### Scanner Code
 
-https://github.com/JasmineH-H/SAST-Pentest-Tool.git
+The SAST and pentest tooling now lives in this repository under `scanner/`.
 
 #### Build and Push the Pentest Docker Image
 
 Before triggering the pentest pipeline, ensure that the pentest Docker image is available in Amazon ECR.  
 If the image is missing, the ECS task will fail with `CannotPullContainerError`.
 
-> Run the following steps from the **Scan Tool repository root directory** (where the `pentest/` folder is located).
+> Run the following steps from this repository root. The pentest Docker context is `scanner/pentest/`.
 
 1. Get your AWS account ID
 
@@ -77,7 +77,7 @@ aws ecr get-login-password --region us-east-1 | docker login --username AWS --pa
 docker buildx build \
   --platform linux/amd64 \
   -t $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/devsecops-advisor-pentest:latest \
-  --push .
+  --push ./scanner/pentest
 ```
 
 6. Verify that the image exists in ECR

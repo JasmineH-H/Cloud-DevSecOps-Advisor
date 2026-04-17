@@ -30,6 +30,11 @@ frontend/.env.*.local
 lambda/pentest-trigger/node_modules/
 lambda/pentest-trigger/pentest-trigger.zip
 
+# Scanner dependencies and local artifacts
+scanner/**/node_modules/
+scanner/**/__pycache__/
+scanner/out.json
+
 # Output and response files
 infrastructure/output.json                                                                                                                                         
 infrastructure/response.json

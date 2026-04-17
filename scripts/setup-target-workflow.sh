@@ -4,7 +4,7 @@ set -euo pipefail
 TARGET_REPO=""
 WORKFLOW_PATH=".github/workflows/sast.yml"
 REF_BRANCH=""
-WORKFLOW_SOURCE="${WORKFLOW_SOURCE:-JasmineH-H/SAST-Pentest-Tool/.github/workflows/sast.yml@main}"
+WORKFLOW_SOURCE="${WORKFLOW_SOURCE:-JasmineH-H/Cloud-DevSecOps-Advisor/.github/workflows/reusable-sast.yml@main}"
 
 usage() {
   cat <<EOF
@@ -17,7 +17,7 @@ Options:
   --help                   Show this help
 
 This script creates/updates the target repo workflow file with the standard
-SAST reusable workflow configuration.
+SAST reusable workflow configuration from this repository.
 EOF
 }
 

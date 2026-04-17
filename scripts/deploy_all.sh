@@ -10,8 +10,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INFRA_DIR="${ROOT_DIR}/infrastructure"
 BACKEND_DIR="${ROOT_DIR}/backend"
 FRONTEND_DIR="${ROOT_DIR}/frontend"
-# Optional external path to SAST-Pentest-Tool/pentest directory
-PENTEST_TOOL_DIR="${PENTEST_TOOL_DIR:-}"
+PENTEST_TOOL_DIR="${PENTEST_TOOL_DIR:-${ROOT_DIR}/scanner/pentest}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 
 usage() {
@@ -107,13 +106,12 @@ if [[ "${SKIP_BACKEND_DEPLOY}" != "true" ]]; then
   cd "$BACKEND_DIR"
   docker buildx build --platform linux/amd64 -t "${BACKEND_ECR}:latest" --push .
 
-  # Optional: Build and push pentest image from another repository
   if [[ -n "${PENTEST_TOOL_DIR}" && -f "${PENTEST_TOOL_DIR}/Dockerfile" ]]; then
     echo "==> Optional: Build + push pentest image from ${PENTEST_TOOL_DIR}"
     cd "${PENTEST_TOOL_DIR}"
     docker buildx build --platform linux/amd64 -t "${PENTEST_ECR}:latest" --push .
   else
-    echo "==> Skipping pentest image build (set PENTEST_TOOL_DIR to enable)"
+    echo "==> Skipping pentest image build (expected Dockerfile at ${PENTEST_TOOL_DIR})"
   fi
 
   # Step 5: Force ECS backend service to pull new image and redeploy tasks

@@ -1,8 +1,7 @@
 ## Overview
 
-This project has three main repositories: 1. Cloud-DevSecOps-Advisor
-Hosts the backend API, infrastructure, and dashboard frontend. 2. SAST-Pentest-Tool
-Contains reusable GitHub Actions workflows and scan sender scripts. 3. Target repositories
+This project has two main parts in one repository plus target repositories: 1. Cloud-DevSecOps-Advisor
+Hosts the backend API, infrastructure, dashboard frontend, and the scanner code under `scanner/`. 2. Target repositories
 Example:
 • juice-shop
 • vulnerable-node-app

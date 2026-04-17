@@ -162,7 +162,7 @@ Skip only one side:
 Optional pentest image source override:
 
 ```bash
-PENTEST_TOOL_DIR=/path/to/SAST-Pentest-Tool/pentest ./scripts/deploy_all.sh
+PENTEST_TOOL_DIR=/path/to/custom/pentest ./scripts/deploy_all.sh
 ```
 
 What `deploy_all.sh` does for you:
@@ -170,6 +170,7 @@ What `deploy_all.sh` does for you:
 - Runs Terraform apply
 - Reads Terraform outputs
 - Optionally logs in to ECR, builds/pushes backend image, and forces ECS backend redeploy
+- Optionally builds/pushes the pentest image from `scanner/pentest`
 - Optionally builds and syncs frontend to S3
 
 Verify:

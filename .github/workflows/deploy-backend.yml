@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      - "scanner/pentest/**"
       - ".github/workflows/deploy-backend.yml"
 
 jobs:
@@ -38,6 +39,7 @@ jobs:
           AWS_REGION: ${{ vars.AWS_REGION }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
           BACKEND_ECR_URL: ${{ vars.BACKEND_ECR_URL }}
+          PENTEST_ECR_URL: ${{ vars.PENTEST_ECR_URL }}
           ECS_CLUSTER_ID: ${{ vars.ECS_CLUSTER_ID }}
           BACKEND_SERVICE_NAME: ${{ vars.BACKEND_SERVICE_NAME }}
         run: |
@@ -46,11 +48,13 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
           RESOLVED_ECR="${BACKEND_ECR_URL:-${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${NAME}-backend}"
+          RESOLVED_PENTEST_ECR="${PENTEST_ECR_URL:-${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${NAME}-pentest}"
           RESOLVED_CLUSTER="${ECS_CLUSTER_ID:-${NAME}-cluster}"
           RESOLVED_SERVICE="${BACKEND_SERVICE_NAME:-${NAME}-backend-service}"
 
           echo "AWS_REGION=${REGION}" >> "$GITHUB_ENV"
           echo "BACKEND_ECR_URL=${RESOLVED_ECR}" >> "$GITHUB_ENV"
+          echo "PENTEST_ECR_URL=${RESOLVED_PENTEST_ECR}" >> "$GITHUB_ENV"
           echo "ECS_CLUSTER_ID=${RESOLVED_CLUSTER}" >> "$GITHUB_ENV"
           echo "BACKEND_SERVICE_NAME=${RESOLVED_SERVICE}" >> "$GITHUB_ENV"
 
@@ -65,6 +69,9 @@ jobs:
 
       - name: Build and push backend image
         run: docker buildx build --platform linux/amd64 -t "${BACKEND_ECR_URL}:latest" --push ./backend
+
+      - name: Build and push pentest image
+        run: docker buildx build --platform linux/amd64 -t "${PENTEST_ECR_URL}:latest" --push ./scanner/pentest
 
       - name: Force ECS backend redeploy
         env:
