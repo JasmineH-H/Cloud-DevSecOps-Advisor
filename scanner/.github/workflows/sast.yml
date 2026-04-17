@@ -1,0 +1,150 @@
+name: Reusable SAST Scan
+
+on:
+  workflow_call:
+    inputs:
+      BACKEND_API_URL:
+        required: true
+        type: string
+      S3_BUCKET:
+        required: true
+        type: string
+      AWS_REGION:
+        required: false
+        type: string
+        default: "us-east-1"
+      SCANNER_REPOSITORY:
+        required: false
+        type: string
+        default: "JasmineH-H/Cloud-DevSecOps-Advisor"
+      SCANNER_REF:
+        required: false
+        type: string
+        default: "main"
+    secrets:
+      INGEST_TOKEN_SAST:
+        required: true
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_SESSION_TOKEN:
+        required: false
+
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout target repo
+      - name: Checkout vulnerable node repo
+        uses: actions/checkout@v4
+
+      # 2. Checkout scanner repo into a hidden folder inside workspace
+      - name: Checkout advisor scanner repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.SCANNER_REPOSITORY }}
+          ref: ${{ inputs.SCANNER_REF }}
+          path: .advisor-tools
+
+      # 3. Setup Node
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 4. Install scanner dependencies
+      - name: Install SAST scanner dependencies
+        working-directory: .advisor-tools/scanner/sast/backend
+        run: npm install
+
+      # 5. Start scanner
+      - name: Start SAST scanner
+        working-directory: .advisor-tools/scanner/sast/backend
+        run: |
+          node server.js > scanner.log 2>&1 &
+          echo $! > scanner.pid
+
+      # 6. Wait for scanner ready
+      - name: Wait for scanner to become ready
+        run: |
+          for i in {1..20}; do
+            if curl -sf http://localhost:3000/health > /dev/null; then
+              echo "Scanner is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Scanner failed to start"
+          cat .advisor-tools/scanner/sast/backend/scanner.log || true
+          exit 1
+
+      # 7. Run scan
+      - name: Scan repository
+        run: |
+          curl -sS -X POST http://localhost:3000/scan/directory \
+            -H "Content-Type: application/json" \
+            -d "{\"dirpath\":\"$GITHUB_WORKSPACE\"}" \
+            -o sast-result.json
+
+      # 8. Print result
+      - name: Show result
+        run: python3 -m json.tool sast-result.json
+
+      # 9. Upload full report to S3
+      - name: Upload SAST report to S3
+        if: always()
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          AWS_DEFAULT_REGION: ${{ inputs.AWS_REGION }}
+          S3_BUCKET: ${{ inputs.S3_BUCKET }}
+        run: |
+          REPO_SLUG=$(echo "$GITHUB_REPOSITORY" | tr '/' '-')
+          S3_KEY="sast-reports/${REPO_SLUG}/${GITHUB_RUN_ID}.json"
+          aws s3 cp sast-result.json "s3://${S3_BUCKET}/${S3_KEY}"
+          echo "S3_KEY=${S3_KEY}" >> $GITHUB_ENV
+          echo "Uploaded to s3://${S3_BUCKET}/${S3_KEY}"
+
+      # 10. Upload result ALWAYS (as GitHub artifact)
+      - name: Upload SAST result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-result
+          path: sast-result.json
+
+      - name: Debug ingest env (safe)
+        if: always()
+        env:
+          INGEST_TOKEN_SAST: ${{ secrets.INGEST_TOKEN_SAST }}
+          BACKEND_API_URL: ${{ inputs.BACKEND_API_URL }}
+        run: |
+          echo "BACKEND_API_URL=${BACKEND_API_URL}"
+          python3 - <<'PY'
+          import os, hashlib
+          t = os.environ.get("INGEST_TOKEN_SAST", "")
+          print("INGEST_TOKEN_SAST length:", len(t))
+          print("INGEST_TOKEN_SAST sha256:", hashlib.sha256(t.encode()).hexdigest() if t else "")
+          PY
+
+      # 11. POST results to backend API
+      - name: Send results to backend API
+        if: always()
+        env:
+          INGEST_TOKEN_SAST: ${{ secrets.INGEST_TOKEN_SAST }}
+          BACKEND_API_URL: ${{ inputs.BACKEND_API_URL }}
+          S3_KEY: ${{ env.S3_KEY }}
+        run: python3 .advisor-tools/scanner/scripts/send_sast.py
+
+      # 12. Fail only on HIGH or MEDIUM
+      - name: Enforce SAST policy (fail on HIGH or MEDIUM)
+        run: python3 .advisor-tools/scanner/scripts/enforce_sast_policy.py
+
+      # 13. Stop scanner
+      - name: Stop scanner
+        if: always()
+        run: |
+          kill $(cat .advisor-tools/scanner/sast/backend/scanner.pid) || true
