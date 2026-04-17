@@ -38,6 +38,11 @@ Required: automate secret creation/update:
 
 This script securely prompts for token values (no echo), writes plaintext secret strings to AWS Secrets Manager, and prints the next GitHub setup checklist. Run this before `terraform apply`.
 
+
+Compatibility note:
+- The pentest trigger now extracts the token from either plaintext or JSON-formatted Secrets Manager values before launching the ECS task.
+- Plaintext token strings are still the recommended format.
+
 | Secret name         | Value                                   |
 | ------------------- | --------------------------------------- |
 | `devsecops/sast`    | Bearer token for `POST /ingest/sast`    |
@@ -126,28 +131,6 @@ Manual fallback:
 
 - `Settings -> Secrets and variables -> Actions` on each target repo.
 
-### Configure this repo (`Cloud-DevSecOps-Advisor`) frontend deploy variables
-
-Recommended:
-
-```bash
-./scripts/setup-advisor-repo.sh
-```
-
-Optional (if you need to target a different repo explicitly):
-
-```bash
-./scripts/setup-advisor-repo.sh --repo owner/repo
-```
-
-Manual fallback:
-
-`Settings -> Secrets and variables -> Actions -> Variables`
-
-- `VITE_API_URL = http://<ALB_DNS>`
-- `FRONTEND_BUCKET = <FRONTEND_BUCKET>`
-
----
 
 ## Deploy application (default path)
 
@@ -197,6 +180,29 @@ ALB_DNS=$(terraform output -raw alb_dns_name)
 curl -s "http://${ALB_DNS}/health"
 terraform output -raw frontend_website_url
 ```
+
+---
+
+### Configure this repo (`Cloud-DevSecOps-Advisor`) frontend deploy variables
+
+Recommended:
+
+```bash
+./scripts/setup-advisor-repo.sh
+```
+
+Optional (if you need to target a different repo explicitly):
+
+```bash
+./scripts/setup-advisor-repo.sh --repo owner/repo
+```
+
+Manual fallback:
+
+`Settings -> Secrets and variables -> Actions -> Variables`
+
+- `VITE_API_URL = http://<ALB_DNS>`
+- `FRONTEND_BUCKET = <FRONTEND_BUCKET>`
 
 ---
 

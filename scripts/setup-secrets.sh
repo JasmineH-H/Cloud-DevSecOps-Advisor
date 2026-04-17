@@ -99,6 +99,18 @@ prompt_secret() {
     echo "Note: Sanitized hidden whitespace/newline characters from ${prompt_label}."
   fi
 
+  if [[ "$sanitized" == \{* || "$sanitized" == \[* ]]; then
+    echo "${prompt_label} must be a plain token string, not JSON." >&2
+    echo "Example: use 'abc123', not '{\"ingest_token_pentest\":\"abc123\"}'." >&2
+    exit 1
+  fi
+
+  if [[ "$sanitized" == Bearer[[:space:]]* ]]; then
+    echo "${prompt_label} must not include the 'Bearer ' prefix." >&2
+    echo "Store only the raw token value." >&2
+    exit 1
+  fi
+
   printf "%s" "$sanitized"
 }
 
@@ -122,7 +134,8 @@ upsert_secret_plaintext() {
 }
 
 echo "Configuring Secrets Manager values in region: ${AWS_REGION}"
-echo "Secrets will be stored as plaintext token strings (not JSON objects)."
+echo "Secrets will be stored as plaintext token strings."
+echo "Do not include JSON wrappers, line breaks, or a 'Bearer ' prefix."
 
 SAST_TOKEN="$(prompt_secret "Enter INGEST_TOKEN_SAST" "${INGEST_TOKEN_SAST:-}")"
 PENTEST_TOKEN="$(prompt_secret "Enter INGEST_TOKEN_PENTEST" "${INGEST_TOKEN_PENTEST:-}")"
