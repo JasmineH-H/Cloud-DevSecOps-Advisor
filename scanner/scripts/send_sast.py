@@ -64,20 +64,12 @@ for r in results:
     severity = severity_map.get(severity_raw, "low")
     path = r.get("path") or r.get("file", "")
     line = r.get("start", {}).get("line") or r.get("line", 0)
-    column = r.get("start", {}).get("col") or r.get("column", 0)
     normalized_finding = {
-        "id": r.get("check_id") or r.get("id") or "SAST_FINDING",
         "title": r.get("check_id") or r.get("name") or "SAST finding",
-        "name": r.get("name") or r.get("check_id") or "SAST finding",
         "severity": severity,
-        "description": r.get("description")
-        or r.get("extra", {}).get("message")
-        or r.get("message", ""),
         "message": r.get("extra", {}).get("message") or r.get("message", ""),
         "file": path,
-        "path": path,
         "line": line,
-        "column": column,
         "location": f"{path}:{line}",
         "evidence": r.get("evidence") or r.get("extra", {}).get("lines") or "",
     }
