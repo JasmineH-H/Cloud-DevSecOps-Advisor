@@ -3,6 +3,7 @@ import RepoForm from "./components/RepoForm";
 import OverviewCards from "./components/OverviewCards";
 import LatestScanDetails from "./components/LatestScanDetails";
 import VulnerabilityTable from "./components/VulnerabilityTable";
+import ScanHistoryTable from "./components/ScanHistoryTable";
 import PentestControl from "./components/PentestControl";
 import PentestResultsPanel from "./components/PentestResultsPanel";
 import {
@@ -61,11 +62,14 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [activeTab, setActiveTab] = useState(DASHBOARD_TABS.PROJECT);
-  const [findingSearch, setFindingSearch] = useState("");
+  const [findingTitleFilter, setFindingTitleFilter] = useState("all");
   const [findingSeverityFilter, setFindingSeverityFilter] = useState("all");
   const [pentestScanDetail, setPentestScanDetail] = useState(null);
   const [pentestScanDetailLoading, setPentestScanDetailLoading] =
     useState(false);
+  const [scanHistory, setScanHistory] = useState([]);
+  const [scanHistoryLoading, setScanHistoryLoading] = useState(false);
+  const [scanTypeFilter, setScanTypeFilter] = useState("latest");
   const latestDashboardRequestRef = useRef(0);
   const latestPentestConfigRequestRef = useRef(0);
   const latestPentestDetailRequestRef = useRef(0);
@@ -222,19 +226,54 @@ function App() {
     return summary;
   }, [summary, activeTab]);
 
+  const findingTitleOptions = useMemo(() => {
+    const vulnerabilities = filteredSummary?.prioritizedVulnerabilities || [];
+    const uniqueTitles = Array.from(
+      new Set(
+        vulnerabilities
+          .map((item) => String(item.title || item.name || "").trim())
+          .filter(Boolean),
+      ),
+    );
+
+    return uniqueTitles.sort((a, b) => a.localeCompare(b));
+  }, [filteredSummary]);
+
+  const filteredScanHistory = useMemo(() => {
+    if (!scanHistory.length) {
+      return [];
+    }
+
+    if (scanTypeFilter === "latest") {
+      return scanHistory;
+    }
+
+    if (scanTypeFilter === "sast") {
+      return scanHistory.filter(
+        (scan) => String(scan.scanType || "").toUpperCase() === "SAST",
+      );
+    }
+
+    if (scanTypeFilter === "pentest") {
+      return scanHistory.filter(
+        (scan) => String(scan.scanType || "").toUpperCase() === "PENTEST",
+      );
+    }
+
+    return scanHistory;
+  }, [scanHistory, scanTypeFilter]);
+
   const visibleVulnerabilities = useMemo(() => {
     const vulnerabilities = filteredSummary?.prioritizedVulnerabilities || [];
-    const query = findingSearch.trim().toLowerCase();
+    const selectedTitle = String(findingTitleFilter || "all").trim();
     const selectedSeverity = String(
       findingSeverityFilter || "all",
     ).toLowerCase();
 
     return vulnerabilities.filter((item) => {
-      const titleMatches = query
-        ? String(item.title || "")
-            .toLowerCase()
-            .includes(query)
-        : true;
+      const itemTitle = String(item.title || item.name || "").trim();
+      const titleMatches =
+        selectedTitle === "all" ? true : itemTitle === selectedTitle;
       const severityMatches =
         selectedSeverity === "all"
           ? true
@@ -242,7 +281,7 @@ function App() {
 
       return titleMatches && severityMatches;
     });
-  }, [filteredSummary, findingSearch, findingSeverityFilter]);
+  }, [filteredSummary, findingTitleFilter, findingSeverityFilter]);
 
   const latestVisibleScan = useMemo(() => {
     if (!filteredSummary) {
@@ -327,12 +366,30 @@ function App() {
       }
 
       setSummary(summaryData);
+
+      // Load scan history
+      try {
+        setScanHistoryLoading(true);
+        const scansData = await fetchRepoScans(selectedOwner, selectedRepo);
+        if (requestId === latestDashboardRequestRef.current) {
+          setScanHistory(scansData || []);
+        }
+      } catch (scansError) {
+        console.warn(
+          "Failed to load scan history:",
+          scansError?.message || scansError,
+        );
+        setScanHistory([]);
+      } finally {
+        setScanHistoryLoading(false);
+      }
     } catch (error) {
       if (requestId !== latestDashboardRequestRef.current) {
         return;
       }
 
       setSummary(null);
+      setScanHistory([]);
       setErrorMessage(
         "Failed to load dashboard data. Please check the selected owner and repository.",
       );
@@ -768,30 +825,15 @@ function App() {
                           View the combined risk score for the current project.
                         </p>
                       </div>
-
-                      <div className="results-chip-row">
-                        <span className="results-chip">
-                          <strong>Overall score</strong>
-                          <span>
-                            {filteredSummary?.overallRiskScore ?? "N/A"}
-                          </span>
-                        </span>
-                        <span className="results-chip">
-                          <strong>Findings</strong>
-                          <span>
-                            {filteredSummary?.prioritizedVulnerabilities
-                              ?.length ?? 0}
-                          </span>
-                        </span>
-                      </div>
                     </div>
 
                     <OverviewCards summary={filteredSummary} />
-                    <VulnerabilityTable
-                      vulnerabilities={visibleVulnerabilities}
-                      isLoading={loading}
-                      onDownload={handleDownloadFindings}
+                    <ScanHistoryTable
+                      scans={filteredScanHistory}
+                      isLoading={scanHistoryLoading}
+                      onView={(runId) => console.log("View scan:", runId)}
                     />
+
                   </>
                 )}
 
@@ -799,80 +841,31 @@ function App() {
                   <>
                     <div className="results-header">
                       <div>
-                        <h2>Latest SAST scan</h2>
+                        <h2>LATEST SAST SCAN</h2>
                       </div>
                     </div>
 
                     <section className="sast-top-row">
                       <LatestScanDetails summary={filteredSummary} />
-
                       <OverviewCards summary={filteredSummary} variant="sast" />
                     </section>
-
-                    <div className="results-toolbar">
-                      <div className="results-search">
-                        <input
-                          type="search"
-                          value={findingSearch}
-                          onChange={(event) =>
-                            setFindingSearch(event.target.value)
-                          }
-                          placeholder="Filter by title..."
-                          aria-label="Filter SAST vulnerabilities by title"
-                        />
-                      </div>
-                      <div className="results-severity-filter">
-                        <label htmlFor="sast-severity-filter">Severity</label>
-                        <select
-                          id="sast-severity-filter"
-                          value={findingSeverityFilter}
-                          onChange={(event) =>
-                            setFindingSeverityFilter(event.target.value)
-                          }
-                          aria-label="Filter SAST vulnerabilities by severity"
-                        >
-                          <option value="all">All</option>
-                          <option value="high">High</option>
-                          <option value="medium">Medium</option>
-                          <option value="low">Low</option>
-                        </select>
-                      </div>
-                    </div>
 
                     <VulnerabilityTable
                       vulnerabilities={visibleVulnerabilities}
                       isLoading={loading}
                       onDownload={handleDownloadFindings}
+                      showFilters
+                      findingTitleFilter={findingTitleFilter}
+                      onFindingTitleFilterChange={setFindingTitleFilter}
+                      findingTitleOptions={findingTitleOptions}
+                      findingSeverityFilter={findingSeverityFilter}
+                      onFindingSeverityFilterChange={setFindingSeverityFilter}
                     />
                   </>
                 )}
 
                 {activeTab === DASHBOARD_TABS.PENTEST && (
                   <>
-                    <div className="results-header">
-                      <div>
-                        <h2>Pentest schedule and result</h2>
-                        <p className="section-description">
-                          Configure the pentest schedule, run it now, and review
-                          the latest pentest result.
-                        </p>
-                      </div>
-
-                      <div className="results-chip-row">
-                        <span className="results-chip">
-                          <strong>Scan ID</strong>
-                          <span>{latestVisibleScan?.runId ?? "N/A"}</span>
-                        </span>
-                        <span className="results-chip">
-                          <strong>Total</strong>
-                          <span>
-                            {latestVisibleScan?.totalFindings ??
-                              visibleVulnerabilities.length}
-                          </span>
-                        </span>
-                      </div>
-                    </div>
-
                     <PentestControl
                       targetUrl={targetUrl}
                       scheduleExpression={scheduleExpression}
@@ -885,12 +878,23 @@ function App() {
                       onSaveSchedule={handleSavePentestSchedule}
                     />
 
-                    <PentestResultsPanel
-                      scanSummary={latestVisibleScan}
-                      scanDetail={pentestScanDetail}
-                      loading={pentestScanDetailLoading}
-                    />
-                    <LatestScanDetails summary={filteredSummary} />
+                    <section>
+                      <h2>LATEST PENTEST RESULT</h2>
+
+                      <section className="sast-top-row">
+                        <LatestScanDetails summary={filteredSummary} />
+                        <OverviewCards
+                          summary={filteredSummary}
+                          variant="pentest"
+                        />
+                      </section>
+
+                      <PentestResultsPanel
+                        scanSummary={latestVisibleScan}
+                        scanDetail={pentestScanDetail}
+                        loading={pentestScanDetailLoading}
+                      />
+                    </section>
                   </>
                 )}
               </section>

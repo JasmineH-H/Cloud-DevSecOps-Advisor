@@ -109,6 +109,72 @@ function OverviewCards({ summary, variant = "default" }) {
     );
   }
 
+  if (variant === "pentest") {
+    const severityCounts = summary?.latestPentest?.severityCounts || {};
+    const failCount = Number(severityCounts.FAIL || 0);
+    const warningCount = Number(severityCounts.WARNING || 0);
+    const errorCount = Number(severityCounts.ERROR || 0);
+    const passCount = Number(severityCounts.PASS || 0);
+
+    const highCount = failCount + errorCount;
+    const mediumCount = warningCount;
+    const lowCount = passCount;
+
+    const totalTests =
+      summary?.latestPentest?.totalFindings !== undefined
+        ? Number(summary?.latestPentest?.totalFindings || 0) + passCount
+        : highCount + mediumCount + lowCount;
+
+    const donutBackground = buildDonutGradient({
+      high: highCount,
+      medium: mediumCount,
+      low: lowCount,
+    });
+
+    return (
+      <section className="sast-score-grid">
+        <div className="sast-score-card sast-score-card-total sast-score-card-wide">
+          <span className="sast-score-label">Total Tests</span>
+          <div className="sast-score-total-content">
+            <div
+              className="sast-score-donut"
+              style={{ background: `conic-gradient(${donutBackground})` }}
+              aria-hidden="true"
+            >
+              <div className="sast-score-donut-center">
+                <strong>{totalTests}</strong>
+              </div>
+            </div>
+            <div
+              className="sast-score-legend"
+              aria-label="Pentest status legend"
+            >
+              <div>
+                <span className="legend-dot legend-dot-high" />
+                Fail/Error: {formatCount(highCount)}
+              </div>
+              <div>
+                <span className="legend-dot legend-dot-medium" />
+                Warning: {formatCount(mediumCount)}
+              </div>
+              <div>
+                <span className="legend-dot legend-dot-low" />
+                Passed: {formatCount(lowCount)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="sast-score-card sast-score-card-risk">
+          <span className="sast-score-label">Risk Score</span>
+          <strong className={getScoreClass(summary?.latestPentest?.riskScore)}>
+            {summary?.latestPentest?.riskScore ?? "N/A"}
+          </strong>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="cards-grid">
       <div className="card">
@@ -132,11 +198,6 @@ function OverviewCards({ summary, variant = "default" }) {
         >
           {summary?.latestPentest?.riskScore ?? "N/A"}
         </p>
-      </div>
-
-      <div className="card">
-        <h3>Total Prioritized Findings</h3>
-        <p className="score">{totalPrioritizedFindings}</p>
       </div>
     </section>
   );
