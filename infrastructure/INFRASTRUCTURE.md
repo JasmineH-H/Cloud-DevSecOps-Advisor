@@ -103,6 +103,13 @@ Run once per target repository after `terraform apply`:
 ./scripts/setup-target-workflow.sh owner/repo
 ```
 
+Optional: also enable branch protection so failed SAST blocks merges into the default branch:
+
+```bash
+./scripts/setup-target-repo.sh owner/repo --protect-branch
+./scripts/setup-target-workflow.sh owner/repo
+```
+
 Optional target URL variable (for pentest workflows):
 
 ```bash
@@ -122,6 +129,12 @@ What this script sets on the target repo:
   - `BACKEND_API_URL` (from Terraform `alb_dns_name`)
   - `S3_BUCKET` (from Terraform `reports_s3_bucket`)
   - `TARGET_URL` (only when `--target-url` is provided)
+
+Optional branch protection support in `setup-target-repo.sh`:
+
+- `--protect-branch` protects the repo default branch and requires the `sast` check before merge
+- `--protect-branch main` protects a specific branch instead of the default branch
+- `--sast-check-context <name>` overrides the required GitHub status check context if needed
 
 What `setup-target-workflow.sh` does:
 

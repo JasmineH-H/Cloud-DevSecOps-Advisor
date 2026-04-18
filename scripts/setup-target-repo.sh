@@ -8,6 +8,9 @@ SAST_SECRET_NAME="${SAST_SECRET_NAME:-devsecops/sast}"
 PENTEST_SECRET_NAME="${PENTEST_SECRET_NAME:-devsecops/pentest}"
 TARGET_URL="${TARGET_URL:-}"
 TARGET_REPO=""
+PROTECT_BRANCH="false"
+PROTECTED_BRANCH_NAME=""
+SAST_CHECK_CONTEXT="${SAST_CHECK_CONTEXT:-sast}"
 
 usage() {
   cat <<EOF
@@ -15,6 +18,10 @@ Usage: ./scripts/setup-target-repo.sh <owner/repo> [options]
 
 Options:
   --target-url <url>             Optional TARGET_URL variable for pentest workflows
+  --protect-branch [branch]      Enable branch protection and require the SAST check
+                                 for merges on the given branch (defaults to repo default branch)
+  --sast-check-context <name>    Required GitHub status check context for branch protection
+                                 (default: ${SAST_CHECK_CONTEXT})
   --region <aws-region>          AWS region for Secrets Manager lookups (default: ${AWS_REGION})
   --sast-secret <name>           Secrets Manager name for SAST token (default: ${SAST_SECRET_NAME})
   --pentest-secret <name>        Secrets Manager name for pentest token (default: ${PENTEST_SECRET_NAME})
@@ -28,6 +35,7 @@ Required environment variables:
 Notes:
   - Run this after terraform apply, so required outputs exist.
   - This script sets GitHub Actions secrets/variables on the target repository.
+  - Branch protection is opt-in because it changes merge behavior on the target repo.
 EOF
 }
 
@@ -44,6 +52,50 @@ require_env() {
     echo "Missing required environment variable: $name" >&2
     exit 1
   fi
+}
+
+protect_branch_with_sast_gate() {
+  local repo="$1"
+  local branch="$2"
+  local check_context="$3"
+  local protection_payload
+
+  echo "Enabling branch protection on ${repo}:${branch}..."
+  protection_payload="$(CHECK_CONTEXT="${check_context}" python3 - <<'PY'
+import json
+import os
+
+payload = {
+    "required_status_checks": {
+        "strict": True,
+        "contexts": [os.environ["CHECK_CONTEXT"]],
+    },
+    "enforce_admins": False,
+    "required_pull_request_reviews": {
+        "dismiss_stale_reviews": False,
+        "require_code_owner_reviews": False,
+        "required_approving_review_count": 1,
+    },
+    "restrictions": None,
+    "required_linear_history": False,
+    "allow_force_pushes": False,
+    "allow_deletions": False,
+    "block_creations": False,
+    "required_conversation_resolution": False,
+    "lock_branch": False,
+    "allow_fork_syncing": False,
+}
+
+print(json.dumps(payload))
+PY
+)"
+
+  gh api \
+    --method PUT \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "repos/${repo}/branches/${branch}/protection" \
+    --input - >/dev/null <<<"${protection_payload}"
 }
 
 hydrate_aws_env_from_config() {
@@ -103,6 +155,20 @@ while [[ $# -gt 0 ]]; do
     --target-url)
       [[ $# -lt 2 ]] && { echo "Error: --target-url requires a value." >&2; exit 1; }
       TARGET_URL="$2"
+      shift 2
+      ;;
+    --protect-branch)
+      PROTECT_BRANCH="true"
+      if [[ $# -ge 2 && ! "$2" =~ ^-- ]]; then
+        PROTECTED_BRANCH_NAME="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    --sast-check-context)
+      [[ $# -lt 2 ]] && { echo "Error: --sast-check-context requires a value." >&2; exit 1; }
+      SAST_CHECK_CONTEXT="$2"
       shift 2
       ;;
     --region)
@@ -177,9 +243,39 @@ if ! gh repo view "${TARGET_REPO}" >/dev/null 2>&1; then
   exit 1
 fi
 
-ADMIN_ACCESS="$(gh api "repos/${TARGET_REPO}" --jq '.permissions.admin // false' 2>/dev/null || echo 'false')"
+REPO_INFO="$(gh api "repos/${TARGET_REPO}" 2>/dev/null)" || {
+  echo "Repository '${TARGET_REPO}' not found or not accessible." >&2
+  exit 1
+}
+
+ADMIN_ACCESS="$(REPO_INFO="${REPO_INFO}" python3 - <<'PY'
+import json
+import os
+
+info = json.loads(os.environ["REPO_INFO"])
+print(str(info.get("permissions", {}).get("admin", False)).lower())
+PY
+)"
 if [[ "${ADMIN_ACCESS}" != "true" ]]; then
   echo "Error: Admin access required on '${TARGET_REPO}' to manage secrets." >&2
+  exit 1
+fi
+
+DEFAULT_BRANCH="$(REPO_INFO="${REPO_INFO}" python3 - <<'PY'
+import json
+import os
+
+info = json.loads(os.environ["REPO_INFO"])
+print(info.get("default_branch", ""))
+PY
+)"
+
+if [[ "${PROTECT_BRANCH}" == "true" && -z "${PROTECTED_BRANCH_NAME}" ]]; then
+  PROTECTED_BRANCH_NAME="${DEFAULT_BRANCH}"
+fi
+
+if [[ "${PROTECT_BRANCH}" == "true" && -z "${PROTECTED_BRANCH_NAME}" ]]; then
+  echo "Error: Could not determine default branch for branch protection." >&2
   exit 1
 fi
 
@@ -237,9 +333,20 @@ else
   echo "         Re-run with --target-url <url> to set it." >&2
 fi
 
+if [[ "${PROTECT_BRANCH}" == "true" ]]; then
+  if ! gh api "repos/${TARGET_REPO}/branches/${PROTECTED_BRANCH_NAME}" >/dev/null 2>&1; then
+    echo "Error: Branch '${PROTECTED_BRANCH_NAME}' not found in ${TARGET_REPO}." >&2
+    exit 1
+  fi
+
+  protect_branch_with_sast_gate "${TARGET_REPO}" "${PROTECTED_BRANCH_NAME}" "${SAST_CHECK_CONTEXT}"
+  echo "Branch protection enabled on ${PROTECTED_BRANCH_NAME} with required status check '${SAST_CHECK_CONTEXT}'."
+fi
+
 echo
 echo "Done. Target repo configured: ${TARGET_REPO}"
 echo "Set variables:"
 echo "- BACKEND_API_URL=${BACKEND_API_URL}"
 echo "- S3_BUCKET=${REPORTS_BUCKET}"
 [[ -n "${TARGET_URL}" ]] && echo "- TARGET_URL=${TARGET_URL}"
+[[ "${PROTECT_BRANCH}" == "true" ]] && echo "- Branch protection: ${PROTECTED_BRANCH_NAME} requires '${SAST_CHECK_CONTEXT}' before merge"
