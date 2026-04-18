@@ -115,6 +115,8 @@ if not base_url.startswith(("http://", "https://")):
 url = f"{base_url}/ingest/sast"
 
 body = json.dumps(payload).encode("utf-8")
+print(f"POST body bytes: {len(body)}")
+print(f"POST body MB: {len(body) / (1024 * 1024):.2f}")
 
 req = urllib.request.Request(
     url,
