@@ -6,25 +6,19 @@ function LatestScanCard({ title, scan, compact = false }) {
       className={`card detail-card${compact ? " detail-card-compact" : ""}`}
     >
       <dl className="detail-list">
-        {isSast && (
-          <div>
+        <div>
             <dt>Scan ID</dt>
             <dd>{scan?.runId ?? "N/A"}</dd>
           </div>
-        )}
         <div>
           <dt>Timestamp</dt>
           <dd>{scan?.timestamp ?? "N/A"}</dd>
         </div>
-        <div>
+        {isSast && (
+          <div>
           <dt>Branch</dt>
           <dd>{scan?.branch ?? "N/A"}</dd>
         </div>
-        {!isSast && (
-          <div>
-            <dt>Commit</dt>
-            <dd>{scan?.commitSha ?? "N/A"}</dd>
-          </div>
         )}
       </dl>
     </article>
