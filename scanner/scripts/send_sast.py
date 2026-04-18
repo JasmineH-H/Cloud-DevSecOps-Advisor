@@ -8,6 +8,7 @@ import urllib.error
 with open("sast-result.json", "r", encoding="utf-8") as f:
     scan_data = json.load(f)
 
+
 def flatten_results(results_obj):
     if isinstance(results_obj, list):
         return [item for item in results_obj if isinstance(item, dict)]
@@ -27,6 +28,7 @@ def flatten_results(results_obj):
         return flattened
 
     return []
+
 
 # Extract findings
 results = flatten_results(scan_data.get("results", []))
@@ -55,17 +57,21 @@ for r in results:
     if not isinstance(r, dict):
         continue
 
-    severity_raw = str(r.get("extra", {}).get("severity") or r.get("severity") or "").lower()
+    severity_raw = str(
+        r.get("extra", {}).get("severity") or r.get("severity") or ""
+    ).lower()
     severity = severity_map.get(severity_raw, "low")
 
     severity_counts[severity] += 1
 
-    top_findings.append({
-        "title": r.get("check_id") or r.get("name") or "SAST finding",
-        "severity": severity,
-        "location": f"{r.get('path') or r.get('file', '')}:{r.get('start', {}).get('line') or r.get('line', 0)}",
-        "recommendation": r.get("extra", {}).get("message") or r.get("message", ""),
-    })
+    top_findings.append(
+        {
+            "title": r.get("check_id") or r.get("name") or "SAST finding",
+            "severity": severity,
+            "location": f"{r.get('path') or r.get('file', '')}:{r.get('start', {}).get('line') or r.get('line', 0)}",
+            "recommendation": r.get("extra", {}).get("message") or r.get("message", ""),
+        }
+    )
 
 total_findings = len(top_findings)
 scan_summary = scan_data.get("summary", {})
@@ -88,7 +94,7 @@ payload = {
     "result": {
         "severityCounts": summary,
         "totalFindings": total_findings,
-        "topFindings": top_findings[:5],
+        "topFindings": top_findings,
     },
 }
 
