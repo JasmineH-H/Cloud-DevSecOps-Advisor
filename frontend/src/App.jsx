@@ -3,8 +3,8 @@ import RepoForm from "./components/RepoForm";
 import OverviewCards from "./components/OverviewCards";
 import LatestScanDetails from "./components/LatestScanDetails";
 import VulnerabilityTable from "./components/VulnerabilityTable";
-import ScanHistoryTable from "./components/ScanHistoryTable";
 import PentestControl from "./components/PentestControl";
+import PentestResultsPanel from "./components/PentestResultsPanel";
 import {
   fetchDashboardSummary,
   fetchPentestSchedule,
@@ -22,14 +22,13 @@ const SELECTED_REPO_SESSION_KEY = "advisor.selected.repo";
 const PENTEST_SCHEDULES_BY_REPO_SESSION_KEY = "advisor.pentest.schedulesByRepo";
 const PENTEST_TARGETS_BY_REPO_SESSION_KEY = "advisor.pentest.targetsByRepo";
 const DEFAULT_SCHEDULE_EXPRESSION = "none";
+const DASHBOARD_TABS = {
+  PROJECT: "project",
+  TOTAL_RISK: "total-risk",
+  SAST: "sast",
+  PENTEST: "pentest",
+};
 
-function formatMetricValue(value) {
-  if (value === null || value === undefined || value === "") {
-    return "N/A";
-  }
-
-  return String(value);
-}
 function App() {
   const [targetUrl, setTargetUrl] = useState(() => {
     if (typeof window === "undefined") {
@@ -59,13 +58,17 @@ function App() {
   });
   const [repoData, setRepoData] = useState([]);
   const [summary, setSummary] = useState(null);
-  const [scans, setScans] = useState([]);
-  const [selectedScan, setSelectedScan] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [scanTypeFilter, setScanTypeFilter] = useState("all");
+  const [activeTab, setActiveTab] = useState(DASHBOARD_TABS.PROJECT);
+  const [findingSearch, setFindingSearch] = useState("");
+  const [findingSeverityFilter, setFindingSeverityFilter] = useState("all");
+  const [pentestScanDetail, setPentestScanDetail] = useState(null);
+  const [pentestScanDetailLoading, setPentestScanDetailLoading] =
+    useState(false);
   const latestDashboardRequestRef = useRef(0);
   const latestPentestConfigRequestRef = useRef(0);
+  const latestPentestDetailRequestRef = useRef(0);
 
   function readJsonSessionObject(key) {
     if (typeof window === "undefined") {
@@ -172,41 +175,96 @@ function App() {
     [repoData],
   );
 
+  const existingProjects = useMemo(() => {
+    return repoData.flatMap((item) =>
+      (item.repositories || []).map((repositoryName) => ({
+        owner: item.owner,
+        repo: repositoryName,
+        label: `${item.owner}/${repositoryName}`,
+      })),
+    );
+  }, [repoData]);
+
   const repoOptions = useMemo(() => {
     const selectedOwner = repoData.find((item) => item.owner === owner);
     return selectedOwner ? selectedOwner.repositories : [];
   }, [repoData, owner]);
 
-  const filteredScans = useMemo(() => {
-    if (!scans?.length) return [];
-    if (scanTypeFilter === "all") return scans;
-    return scans.filter(
-      (scan) =>
-        String(scan.scanType || "").toUpperCase() ===
-        scanTypeFilter.toUpperCase(),
-    );
-  }, [scans, scanTypeFilter]);
-
   const filteredSummary = useMemo(() => {
     if (!summary) return null;
-    if (scanTypeFilter === "all") return summary;
 
-    const filtered = { ...summary };
-    if (scanTypeFilter === "sast") {
-      filtered.latestPentest = null;
-      filtered.prioritizedVulnerabilities =
-        summary.prioritizedVulnerabilities?.filter(
-          (v) => String(v.source || "").toUpperCase() === "SAST",
-        ) || [];
-    } else if (scanTypeFilter === "pentest") {
-      filtered.latestSast = null;
-      filtered.prioritizedVulnerabilities =
-        summary.prioritizedVulnerabilities?.filter(
-          (v) => String(v.source || "").toUpperCase() === "PENTEST",
-        ) || [];
+    if (activeTab === DASHBOARD_TABS.TOTAL_RISK) {
+      return summary;
     }
-    return filtered;
-  }, [summary, scanTypeFilter]);
+
+    if (activeTab === DASHBOARD_TABS.SAST) {
+      return {
+        ...summary,
+        latestPentest: null,
+        prioritizedVulnerabilities:
+          summary.prioritizedVulnerabilities?.filter(
+            (v) => String(v.source || "").toUpperCase() === "SAST",
+          ) || [],
+      };
+    }
+
+    if (activeTab === DASHBOARD_TABS.PENTEST) {
+      return {
+        ...summary,
+        latestSast: null,
+        prioritizedVulnerabilities:
+          summary.prioritizedVulnerabilities?.filter(
+            (v) => String(v.source || "").toUpperCase() === "PENTEST",
+          ) || [],
+      };
+    }
+
+    return summary;
+  }, [summary, activeTab]);
+
+  const visibleVulnerabilities = useMemo(() => {
+    const vulnerabilities = filteredSummary?.prioritizedVulnerabilities || [];
+    const query = findingSearch.trim().toLowerCase();
+    const selectedSeverity = String(
+      findingSeverityFilter || "all",
+    ).toLowerCase();
+
+    return vulnerabilities.filter((item) => {
+      const titleMatches = query
+        ? String(item.title || "")
+            .toLowerCase()
+            .includes(query)
+        : true;
+      const severityMatches =
+        selectedSeverity === "all"
+          ? true
+          : String(item.severity || "").toLowerCase() === selectedSeverity;
+
+      return titleMatches && severityMatches;
+    });
+  }, [filteredSummary, findingSearch, findingSeverityFilter]);
+
+  const latestVisibleScan = useMemo(() => {
+    if (!filteredSummary) {
+      return null;
+    }
+
+    if (activeTab === DASHBOARD_TABS.SAST) {
+      return filteredSummary.latestSast || null;
+    }
+
+    if (activeTab === DASHBOARD_TABS.TOTAL_RISK) {
+      return (
+        filteredSummary.latestSast || filteredSummary.latestPentest || null
+      );
+    }
+
+    if (activeTab === DASHBOARD_TABS.PENTEST) {
+      return filteredSummary.latestPentest || null;
+    }
+
+    return filteredSummary.latestSast || filteredSummary.latestPentest || null;
+  }, [filteredSummary, activeTab]);
 
   async function loadRepoOptions() {
     try {
@@ -257,28 +315,24 @@ function App() {
     const requestId = ++latestDashboardRequestRef.current;
     setLoading(true);
     setErrorMessage("");
-    setSelectedScan(null);
 
     try {
-      const [summaryData, scansData] = await Promise.all([
-        fetchDashboardSummary(selectedOwner, selectedRepo),
-        fetchRepoScans(selectedOwner, selectedRepo),
-      ]);
+      const summaryData = await fetchDashboardSummary(
+        selectedOwner,
+        selectedRepo,
+      );
 
       if (requestId !== latestDashboardRequestRef.current) {
         return;
       }
 
       setSummary(summaryData);
-      setScans(scansData);
     } catch (error) {
       if (requestId !== latestDashboardRequestRef.current) {
         return;
       }
 
       setSummary(null);
-      setScans([]);
-      setSelectedScan(null);
       setErrorMessage(
         "Failed to load dashboard data. Please check the selected owner and repository.",
       );
@@ -286,19 +340,6 @@ function App() {
       if (requestId === latestDashboardRequestRef.current) {
         setLoading(false);
       }
-    }
-  }
-
-  async function handleView(runId) {
-    console.log("View button clicked:", runId);
-
-    try {
-      const detail = await fetchScanDetail(runId);
-      console.log("Fetched scan detail:", detail);
-      setSelectedScan(detail);
-    } catch (error) {
-      console.error("Failed to load scan detail:", error);
-      setErrorMessage("Failed to load scan detail.");
     }
   }
 
@@ -345,6 +386,7 @@ function App() {
       if (!owner || !repo) {
         return;
       }
+
       const requestId = ++latestPentestConfigRequestRef.current;
       const repoLabel = `${owner}/${repo}`;
       setPentestRepoName(repoLabel);
@@ -355,11 +397,13 @@ function App() {
       const cachedTargetsByRepo = readJsonSessionObject(
         PENTEST_TARGETS_BY_REPO_SESSION_KEY,
       );
+
       if (cachedSchedulesByRepo[repoLabel]) {
         setScheduleExpression(String(cachedSchedulesByRepo[repoLabel]));
       } else {
         setScheduleExpression(DEFAULT_SCHEDULE_EXPRESSION);
       }
+
       if (cachedTargetsByRepo[repoLabel]) {
         setTargetUrl(String(cachedTargetsByRepo[repoLabel]));
       }
@@ -369,6 +413,7 @@ function App() {
         if (requestId !== latestPentestConfigRequestRef.current) {
           return;
         }
+
         if (config?.configured) {
           if (config.targetUrl) {
             setTargetUrl(String(config.targetUrl));
@@ -400,6 +445,45 @@ function App() {
 
     loadSelectedRepoPentestConfig();
   }, [owner, repo]);
+
+  useEffect(() => {
+    async function loadPentestScanDetail() {
+      if (activeTab !== DASHBOARD_TABS.PENTEST) {
+        setPentestScanDetail(null);
+        setPentestScanDetailLoading(false);
+        return;
+      }
+
+      const runId = latestVisibleScan?.runId;
+      if (!runId) {
+        setPentestScanDetail(null);
+        setPentestScanDetailLoading(false);
+        return;
+      }
+
+      const requestId = ++latestPentestDetailRequestRef.current;
+      setPentestScanDetailLoading(true);
+
+      try {
+        const detail = await fetchScanDetail(runId);
+        if (requestId !== latestPentestDetailRequestRef.current) {
+          return;
+        }
+        setPentestScanDetail(detail || null);
+      } catch (error) {
+        if (requestId !== latestPentestDetailRequestRef.current) {
+          return;
+        }
+        setPentestScanDetail(null);
+      } finally {
+        if (requestId === latestPentestDetailRequestRef.current) {
+          setPentestScanDetailLoading(false);
+        }
+      }
+    }
+
+    loadPentestScanDetail();
+  }, [activeTab, latestVisibleScan?.runId]);
 
   function handleOwnerChange(selectedOwner) {
     setOwner(selectedOwner);
@@ -509,28 +593,29 @@ function App() {
     loadDashboard(owner, repo);
   }
 
+  function handleTabChange(nextTab) {
+    setActiveTab(nextTab);
+  }
+
+  function handleDownloadFindings() {
+    const payload = JSON.stringify(visibleVulnerabilities, null, 2);
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "prioritized-vulnerabilities.json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="app-shell">
       <div className="page-orb page-orb-one" aria-hidden="true" />
       <div className="page-orb page-orb-two" aria-hidden="true" />
 
       <div className="app-container">
-        <header className="hero-panel">
-          <div className="hero-copy">
-            <h1>Cloud DevSecOps Security Advisor</h1>
-            <p className="hero-description">
-              A cleaner command center for automated code scans, API pentests,
-              and prioritized remediation across every repository.
-            </p>
-            <div className="hero-badges" aria-label="Core capabilities">
-              <span className="hero-badge">SAST CODE SCANNING</span>
-              <span className="hero-badge">API PENTESTING</span>
-              <span className="hero-badge">SCAN HISTORY</span>
-              <span className="hero-badge">RISK SCORE</span>
-            </div>
-          </div>
-        </header>
-
         {pentestActionBusy && (
           <div className="action-overlay" role="status" aria-live="polite">
             <div className="action-overlay-card">
@@ -548,180 +633,269 @@ function App() {
           </div>
         )}
 
-        <main className="dashboard-stack">
-          <RepoForm
-            owner={owner}
-            repo={repo}
-            ownerOptions={ownerOptions}
-            repoOptions={repoOptions}
-            onOwnerChange={handleOwnerChange}
-            onRepoChange={handleRepoChange}
-            onSubmit={handleSubmit}
-          />
-
-          <PentestControl
-            targetUrl={targetUrl}
-            scheduleExpression={scheduleExpression}
-            repoName={pentestRepoName}
-            busy={pentestActionBusy}
-            onTargetUrlChange={setTargetUrl}
-            onRepoNameChange={setPentestRepoName}
-            onScheduleExpressionChange={setScheduleExpression}
-            onRunNow={handleRunPentestNow}
-            onSaveSchedule={handleSavePentestSchedule}
-          />
-
-          <div className="status-stack" aria-live="polite">
-            {pentestActionMessage && (
-              <p className="status-message">{pentestActionMessage}</p>
-            )}
-            {loading && <p className="status-message">Loading dashboard...</p>}
-            {errorMessage && <p className="error-message">{errorMessage}</p>}
-          </div>
-
-          {!errorMessage && summary && (
-            <>
-              <OverviewCards summary={summary} />
-
-              <div className="filter-toggle">
-                <button
-                  type="button"
-                  className={`filter-btn ${scanTypeFilter === "all" ? "active" : ""}`}
-                  onClick={() => setScanTypeFilter("all")}
-                >
-                  All Scans
-                </button>
-                <button
-                  type="button"
-                  className={`filter-btn ${scanTypeFilter === "sast" ? "active" : ""}`}
-                  onClick={() => setScanTypeFilter("sast")}
-                >
-                  SAST
-                </button>
-                <button
-                  type="button"
-                  className={`filter-btn ${scanTypeFilter === "pentest" ? "active" : ""}`}
-                  onClick={() => setScanTypeFilter("pentest")}
-                >
-                  Pentest
-                </button>
+        <main className="dashboard-layout">
+          <aside className="dashboard-sidebar">
+            <header className="hero-panel sidebar-hero-panel">
+              <div className="hero-copy">
+                <h1>Cloud DevSecOps Security Advisor</h1>
+                <p className="hero-description">
+                  A cleaner command center for automated code scans, API
+                  pentests, and prioritized remediation across every repository.
+                </p>
+                <div className="hero-badges" aria-label="Core capabilities">
+                  <span className="hero-badge">SAST CODE SCANNING</span>
+                  <span className="hero-badge">API PENTESTING</span>
+                  <span className="hero-badge">SCAN HISTORY</span>
+                  <span className="hero-badge">RISK SCORE</span>
+                </div>
               </div>
+            </header>
 
-              <LatestScanDetails summary={filteredSummary} />
-              <VulnerabilityTable
-                vulnerabilities={filteredSummary.prioritizedVulnerabilities}
-                isLoading={loading}
-              />
+            <nav className="sidebar-tabs" aria-label="Dashboard sections">
+              <button
+                type="button"
+                className={`sidebar-tab ${activeTab === DASHBOARD_TABS.PROJECT ? "active" : ""}`}
+                onClick={() => handleTabChange(DASHBOARD_TABS.PROJECT)}
+              >
+                Project
+              </button>
+              <button
+                type="button"
+                className={`sidebar-tab ${activeTab === DASHBOARD_TABS.TOTAL_RISK ? "active" : ""}`}
+                onClick={() => handleTabChange(DASHBOARD_TABS.TOTAL_RISK)}
+              >
+                Total Risk Score
+              </button>
+              <button
+                type="button"
+                className={`sidebar-tab ${activeTab === DASHBOARD_TABS.SAST ? "active" : ""}`}
+                onClick={() => handleTabChange(DASHBOARD_TABS.SAST)}
+              >
+                SAST Result
+              </button>
+              <button
+                type="button"
+                className={`sidebar-tab ${activeTab === DASHBOARD_TABS.PENTEST ? "active" : ""}`}
+                onClick={() => handleTabChange(DASHBOARD_TABS.PENTEST)}
+              >
+                Pentest Control and Result
+              </button>
+            </nav>
 
-              {selectedScan && (
-                <div
-                  className="detail-modal-overlay"
-                  onClick={() => setSelectedScan(null)}
-                >
-                  <div
-                    className="detail-modal-card"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="detail-modal-header">
-                      <h2>Scan Detail</h2>
-                      <button
-                        type="button"
-                        className="detail-modal-close"
-                        onClick={() => setSelectedScan(null)}
-                        aria-label="Close scan detail"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <div className="detail-modal-body">
-                      <div className="detail-grid">
-                        <p>
-                          <strong>Run ID:</strong> {selectedScan.runId}
-                        </p>
-                        <p>
-                          <strong>Scan Type:</strong> {selectedScan.scanType}
-                        </p>
-                        <p>
-                          <strong>Status:</strong> {selectedScan.status}
-                        </p>
-                        <p>
-                          <strong>Timestamp:</strong> {selectedScan.timestamp}
-                        </p>
-                        <p>
-                          <strong>Branch:</strong> {selectedScan.branch}
-                        </p>
-                        <p>
-                          <strong>Commit SHA:</strong> {selectedScan.commitSha}
-                        </p>
-                        <p>
-                          <strong>Tool:</strong> {selectedScan.toolName}
-                        </p>
-                        <p>
-                          <strong>Tool Version:</strong>{" "}
-                          {selectedScan.toolVersion}
-                        </p>
-                        <p>
-                          <strong>Risk Score:</strong> {selectedScan.riskScore}
-                        </p>
-                        <p>
-                          <strong>Total Findings:</strong>{" "}
-                          {selectedScan.totalFindings}
-                        </p>
-                        <p>
-                          <strong>Report Format:</strong>{" "}
-                          {selectedScan.reportFormat}
-                        </p>
-                        <div className="detail-copy-row">
-                          <p>
-                            <strong>S3 Report Path:</strong>{" "}
-                            {selectedScan.reportS3Key || "N/A"}
-                          </p>
-                          <button
-                            type="button"
-                            className="inline-button"
-                            disabled={!selectedScan.reportS3Key}
-                            onClick={() => {
-                              if (selectedScan.reportS3Key) {
-                                navigator.clipboard.writeText(
-                                  selectedScan.reportS3Key,
-                                );
-                              }
-                            }}
-                          >
-                            Copy path
-                          </button>
+            <div className="status-stack sidebar-status" aria-live="polite">
+              {pentestActionMessage && (
+                <p className="status-message">{pentestActionMessage}</p>
+              )}
+              {loading && (
+                <p className="status-message">Loading dashboard...</p>
+              )}
+              {errorMessage && <p className="error-message">{errorMessage}</p>}
+            </div>
+          </aside>
+
+          <section className="dashboard-content">
+            {!errorMessage && summary && (
+              <section className="results-panel">
+                {activeTab === DASHBOARD_TABS.PROJECT && (
+                  <>
+                    <div className="project-layout">
+                      <RepoForm
+                        owner={owner}
+                        repo={repo}
+                        targetUrl={targetUrl}
+                        ownerOptions={ownerOptions}
+                        repoOptions={repoOptions}
+                        onOwnerChange={handleOwnerChange}
+                        onRepoChange={handleRepoChange}
+                        onTargetUrlChange={setTargetUrl}
+                        onSubmit={handleSubmit}
+                      />
+
+                      <aside className="existing-project-card">
+                        <div className="section-heading compact-heading">
+                          <div>
+                            <h3>Current project</h3>
+                            <p className="section-description">
+                              This is the project currently loaded in the
+                              dashboard.
+                            </p>
+                          </div>
                         </div>
+
+                        <div className="existing-project-summary">
+                          <p>
+                            <strong>Owner:</strong> {owner || "N/A"}
+                          </p>
+                          <p>
+                            <strong>Repository:</strong> {repo || "N/A"}
+                          </p>
+                          <p>
+                            <strong>Target URL:</strong> {targetUrl || "N/A"}
+                          </p>
+                          <p>
+                            <strong>Repo label:</strong>{" "}
+                            {pentestRepoName || "N/A"}
+                          </p>
+                        </div>
+
+                        <div className="existing-project-list">
+                          {existingProjects.length ? (
+                            existingProjects.slice(0, 8).map((project) => (
+                              <div
+                                key={project.label}
+                                className={`existing-project-item ${project.owner === owner && project.repo === repo ? "active" : ""}`}
+                              >
+                                <span>{project.label}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="status-message">
+                              No existing projects found.
+                            </p>
+                          )}
+                        </div>
+                      </aside>
+                    </div>
+                  </>
+                )}
+
+                {activeTab === DASHBOARD_TABS.TOTAL_RISK && (
+                  <>
+                    <div className="results-header">
+                      <div>
+                        <h2>Total risk score</h2>
+                        <p className="section-description">
+                          View the combined risk score for the current project.
+                        </p>
                       </div>
 
-                      <h3>Severity Counts</h3>
-                      <pre>
-                        {JSON.stringify(
-                          selectedScan.severityCounts || {},
-                          null,
-                          2,
-                        )}
-                      </pre>
-
-                      <h3>Top Findings</h3>
-                      <pre>
-                        {JSON.stringify(
-                          selectedScan.topFindings || [],
-                          null,
-                          2,
-                        )}
-                      </pre>
+                      <div className="results-chip-row">
+                        <span className="results-chip">
+                          <strong>Overall score</strong>
+                          <span>
+                            {filteredSummary?.overallRiskScore ?? "N/A"}
+                          </span>
+                        </span>
+                        <span className="results-chip">
+                          <strong>Findings</strong>
+                          <span>
+                            {filteredSummary?.prioritizedVulnerabilities
+                              ?.length ?? 0}
+                          </span>
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              )}
 
-              <ScanHistoryTable
-                scans={filteredScans}
-                onView={handleView}
-                isLoading={loading}
-              />
-            </>
-          )}
+                    <OverviewCards summary={filteredSummary} />
+                    <VulnerabilityTable
+                      vulnerabilities={visibleVulnerabilities}
+                      isLoading={loading}
+                      onDownload={handleDownloadFindings}
+                    />
+                  </>
+                )}
+
+                {activeTab === DASHBOARD_TABS.SAST && (
+                  <>
+                    <div className="results-header">
+                      <div>
+                        <h2>Latest SAST scan</h2>
+                      </div>
+                    </div>
+
+                    <section className="sast-top-row">
+                      <LatestScanDetails summary={filteredSummary} />
+
+                      <OverviewCards summary={filteredSummary} variant="sast" />
+                    </section>
+
+                    <div className="results-toolbar">
+                      <div className="results-search">
+                        <input
+                          type="search"
+                          value={findingSearch}
+                          onChange={(event) =>
+                            setFindingSearch(event.target.value)
+                          }
+                          placeholder="Filter by title..."
+                          aria-label="Filter SAST vulnerabilities by title"
+                        />
+                      </div>
+                      <div className="results-severity-filter">
+                        <label htmlFor="sast-severity-filter">Severity</label>
+                        <select
+                          id="sast-severity-filter"
+                          value={findingSeverityFilter}
+                          onChange={(event) =>
+                            setFindingSeverityFilter(event.target.value)
+                          }
+                          aria-label="Filter SAST vulnerabilities by severity"
+                        >
+                          <option value="all">All</option>
+                          <option value="high">High</option>
+                          <option value="medium">Medium</option>
+                          <option value="low">Low</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <VulnerabilityTable
+                      vulnerabilities={visibleVulnerabilities}
+                      isLoading={loading}
+                      onDownload={handleDownloadFindings}
+                    />
+                  </>
+                )}
+
+                {activeTab === DASHBOARD_TABS.PENTEST && (
+                  <>
+                    <div className="results-header">
+                      <div>
+                        <h2>Pentest schedule and result</h2>
+                        <p className="section-description">
+                          Configure the pentest schedule, run it now, and review
+                          the latest pentest result.
+                        </p>
+                      </div>
+
+                      <div className="results-chip-row">
+                        <span className="results-chip">
+                          <strong>Scan ID</strong>
+                          <span>{latestVisibleScan?.runId ?? "N/A"}</span>
+                        </span>
+                        <span className="results-chip">
+                          <strong>Total</strong>
+                          <span>
+                            {latestVisibleScan?.totalFindings ??
+                              visibleVulnerabilities.length}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+
+                    <PentestControl
+                      targetUrl={targetUrl}
+                      scheduleExpression={scheduleExpression}
+                      repoName={pentestRepoName}
+                      busy={pentestActionBusy}
+                      onTargetUrlChange={setTargetUrl}
+                      onRepoNameChange={setPentestRepoName}
+                      onScheduleExpressionChange={setScheduleExpression}
+                      onRunNow={handleRunPentestNow}
+                      onSaveSchedule={handleSavePentestSchedule}
+                    />
+
+                    <PentestResultsPanel
+                      scanSummary={latestVisibleScan}
+                      scanDetail={pentestScanDetail}
+                      loading={pentestScanDetailLoading}
+                    />
+                    <LatestScanDetails summary={filteredSummary} />
+                  </>
+                )}
+              </section>
+            )}
+          </section>
         </main>
       </div>
     </div>
