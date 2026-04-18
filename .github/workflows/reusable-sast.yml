@@ -74,15 +74,48 @@ jobs:
           cat .advisor-tools/scanner/sast/backend/scanner.log || true
           exit 1
 
+      - name: Prepare filtered scan workspace
+        run: |
+          rm -rf /tmp/scan-target
+          mkdir -p /tmp/scan-target
+          rsync -a --delete \
+            --exclude ".git/" \
+            --exclude ".github/" \
+            --exclude ".advisor-tools/" \
+            --exclude "node_modules/" \
+            --exclude "dist/" \
+            --exclude "build/" \
+            --exclude "coverage/" \
+            --exclude ".next/" \
+            --exclude "vendor/" \
+            "$GITHUB_WORKSPACE"/ /tmp/scan-target/
+
       - name: Scan repository
         run: |
           curl -sS -X POST http://localhost:3000/scan/directory \
             -H "Content-Type: application/json" \
-            -d "{\"dirpath\":\"$GITHUB_WORKSPACE\"}" \
+            -d "{\"dirpath\":\"/tmp/scan-target\"}" \
             -o sast-result.json
 
-      - name: Show result
-        run: python3 -m json.tool sast-result.json
+      - name: Show result summary
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("sast-result.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          summary = data.get("summary", {})
+          print("sast-result.json bytes:", path.stat().st_size)
+          print("summary:", json.dumps(summary, indent=2))
+          results = data.get("results", {})
+          if isinstance(results, dict):
+            total = sum(len(items) for items in results.values() if isinstance(items, list))
+          elif isinstance(results, list):
+            total = len(results)
+          else:
+            total = 0
+          print("total findings:", total)
+          PY
 
       - name: Upload SAST report to S3
         if: always()
@@ -94,8 +127,10 @@ jobs:
           S3_BUCKET: ${{ inputs.S3_BUCKET }}
         run: |
           REPO_SLUG=$(echo "$GITHUB_REPOSITORY" | tr '/' '-')
-          S3_KEY="sast-reports/${REPO_SLUG}/${GITHUB_RUN_ID}.json"
-          aws s3 cp sast-result.json "s3://${S3_BUCKET}/${S3_KEY}"
+          S3_KEY="sast-reports/${REPO_SLUG}/${GITHUB_RUN_ID}.json.gz"
+          gzip -c sast-result.json > sast-result.json.gz
+          ls -lh sast-result.json sast-result.json.gz
+          aws s3 cp sast-result.json.gz "s3://${S3_BUCKET}/${S3_KEY}"
           echo "S3_KEY=${S3_KEY}" >> "$GITHUB_ENV"
           echo "Uploaded to s3://${S3_BUCKET}/${S3_KEY}"
 
