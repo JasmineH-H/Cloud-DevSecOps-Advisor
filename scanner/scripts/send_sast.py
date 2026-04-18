@@ -39,6 +39,7 @@ severity_counts = {
 }
 
 top_findings = []
+all_findings = []
 
 # Map Semgrep severities to dashboard/backend severities
 severity_map = {
@@ -57,15 +58,37 @@ for r in results:
 
     severity_raw = str(r.get("extra", {}).get("severity") or r.get("severity") or "").lower()
     severity = severity_map.get(severity_raw, "low")
+    path = r.get("path") or r.get("file", "")
+    line = r.get("start", {}).get("line") or r.get("line", 0)
+    column = r.get("start", {}).get("col") or r.get("column", 0)
+    normalized_finding = {
+        "id": r.get("check_id") or r.get("id") or "SAST_FINDING",
+        "title": r.get("check_id") or r.get("name") or "SAST finding",
+        "name": r.get("name") or r.get("check_id") or "SAST finding",
+        "severity": severity,
+        "description": r.get("description")
+        or r.get("extra", {}).get("message")
+        or r.get("message", ""),
+        "message": r.get("extra", {}).get("message") or r.get("message", ""),
+        "file": path,
+        "path": path,
+        "line": line,
+        "column": column,
+        "location": f"{path}:{line}",
+        "evidence": r.get("evidence") or r.get("extra", {}).get("lines") or "",
+    }
 
     severity_counts[severity] += 1
+    all_findings.append(normalized_finding)
 
-    top_findings.append({
-        "title": r.get("check_id") or r.get("name") or "SAST finding",
-        "severity": severity,
-        "location": f"{r.get('path') or r.get('file', '')}:{r.get('start', {}).get('line') or r.get('line', 0)}",
-        "recommendation": r.get("extra", {}).get("message") or r.get("message", ""),
-    })
+    top_findings.append(
+        {
+            "title": normalized_finding["title"],
+            "severity": severity,
+            "location": normalized_finding["location"],
+            "recommendation": normalized_finding["message"],
+        }
+    )
 
 total_findings = len(top_findings)
 scan_summary = scan_data.get("summary", {})
@@ -89,6 +112,7 @@ payload = {
         "severityCounts": summary,
         "totalFindings": total_findings,
         "topFindings": top_findings[:5],
+        "allFindings": all_findings,
     },
 }
 
