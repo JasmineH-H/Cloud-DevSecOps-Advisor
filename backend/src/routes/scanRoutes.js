@@ -5,6 +5,7 @@ const {
   getRepoScans,
   getLatestRepoScan,
   getScanDetail,
+  getScanFindings,
   getDashboardSummary,
   getRepoDynamoItems,
   getScanDynamoItem,
@@ -67,6 +68,7 @@ router.get("/repos/:owner/:repo/scans", getRepoScans);
 router.get("/repos/:owner/:repo/scans/latest", getLatestRepoScan);
 router.get("/scan", getScanDetail);
 router.get("/scan/:runId", getScanDetail);
+router.get("/scan/:runId/findings", getScanFindings);
 router.get("/repos/:owner/:repo/dashboard-summary", getDashboardSummary);
 
 router.get(

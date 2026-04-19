@@ -5,6 +5,7 @@ const enableDebugRoutes =
 
 const requiredEnv = [
   "SCAN_RESULTS_TABLE",
+  "SCAN_FINDINGS_TABLE",
   "REPORTS_BUCKET",
   "INGEST_TOKEN_SAST",
   "INGEST_TOKEN_PENTEST",
@@ -30,7 +31,17 @@ if (missingEnv.length > 0) {
 const app = require("./app");
 
 const PORT = process.env.PORT || 3000;
+const jsonBodyLimit = process.env.JSON_BODY_LIMIT || "15mb";
 
 app.listen(PORT, () => {
+  console.log("[startup] Backend configuration:", {
+    port: PORT,
+    jsonBodyLimit,
+    hasScanResultsTable: Boolean(String(process.env.SCAN_RESULTS_TABLE || "").trim()),
+    hasScanFindingsTable: Boolean(
+      String(process.env.SCAN_FINDINGS_TABLE || "").trim()
+    ),
+    reportsBucket: process.env.REPORTS_BUCKET || null,
+  });
   console.log(`Server is running on port ${PORT}`);
 });

@@ -30,3 +30,24 @@ resource "aws_dynamodb_table" "scan_results" {
     Name = local.scan_results_table_name
   })
 }
+
+resource "aws_dynamodb_table" "scan_findings" {
+  name         = "${var.project_name}-scan-findings"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "runId"
+  range_key    = "findingId"
+
+  attribute {
+    name = "runId"
+    type = "S"
+  }
+
+  attribute {
+    name = "findingId"
+    type = "S"
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-scan-findings"
+  })
+}

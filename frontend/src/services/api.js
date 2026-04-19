@@ -48,6 +48,16 @@ export async function fetchScanDetail(runId) {
   return response.data.data;
 }
 
+export async function fetchScanFindings(runId, filters = {}) {
+  const response = await api.get(`/scan/${runId}/findings`, {
+    params: {
+      severity: filters.severity || undefined,
+      title: filters.title || undefined
+    }
+  });
+  return response.data.data;
+}
+
 export async function triggerPentestNow({ targetUrl, repoName }) {
   const response = await api.post("/pentest/run-now", {
     targetUrl,

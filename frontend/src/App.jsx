@@ -12,6 +12,7 @@ import {
   fetchRepoOptions,
   fetchRepoScans,
   fetchScanDetail,
+  fetchScanFindings,
   triggerPentestNow,
   updatePentestSchedule,
 } from "./services/api";
@@ -70,9 +71,13 @@ function App() {
   const [scanHistory, setScanHistory] = useState([]);
   const [scanHistoryLoading, setScanHistoryLoading] = useState(false);
   const [scanTypeFilter, setScanTypeFilter] = useState("latest");
+  const [sastFindings, setSastFindings] = useState([]);
+  const [sastFindingsLoading, setSastFindingsLoading] = useState(false);
+  const [sastFindingsError, setSastFindingsError] = useState("");
   const latestDashboardRequestRef = useRef(0);
   const latestPentestConfigRequestRef = useRef(0);
   const latestPentestDetailRequestRef = useRef(0);
+  const latestSastFindingsRequestRef = useRef(0);
 
   function readJsonSessionObject(key) {
     if (typeof window === "undefined") {
@@ -227,7 +232,10 @@ function App() {
   }, [summary, activeTab]);
 
   const findingTitleOptions = useMemo(() => {
-    const vulnerabilities = filteredSummary?.prioritizedVulnerabilities || [];
+    const vulnerabilities =
+      activeTab === DASHBOARD_TABS.SAST
+        ? sastFindings
+        : filteredSummary?.prioritizedVulnerabilities || [];
     const uniqueTitles = Array.from(
       new Set(
         vulnerabilities
@@ -237,7 +245,7 @@ function App() {
     );
 
     return uniqueTitles.sort((a, b) => a.localeCompare(b));
-  }, [filteredSummary]);
+  }, [activeTab, filteredSummary, sastFindings]);
 
   const filteredScanHistory = useMemo(() => {
     if (!scanHistory.length) {
@@ -264,6 +272,10 @@ function App() {
   }, [scanHistory, scanTypeFilter]);
 
   const visibleVulnerabilities = useMemo(() => {
+    if (activeTab === DASHBOARD_TABS.SAST) {
+      return sastFindings;
+    }
+
     const vulnerabilities = filteredSummary?.prioritizedVulnerabilities || [];
     const selectedTitle = String(findingTitleFilter || "all").trim();
     const selectedSeverity = String(
@@ -281,7 +293,13 @@ function App() {
 
       return titleMatches && severityMatches;
     });
-  }, [filteredSummary, findingTitleFilter, findingSeverityFilter]);
+  }, [
+    activeTab,
+    filteredSummary,
+    findingTitleFilter,
+    findingSeverityFilter,
+    sastFindings,
+  ]);
 
   const latestVisibleScan = useMemo(() => {
     if (!filteredSummary) {
@@ -502,6 +520,86 @@ function App() {
 
     loadSelectedRepoPentestConfig();
   }, [owner, repo]);
+
+  useEffect(() => {
+    async function loadLatestSastFindings() {
+      if (activeTab !== DASHBOARD_TABS.SAST) {
+        setSastFindings([]);
+        setSastFindingsLoading(false);
+        setSastFindingsError("");
+        return;
+      }
+
+      const runId = summary?.latestSast?.runId;
+      if (!runId) {
+        setSastFindings([]);
+        setSastFindingsLoading(false);
+        setSastFindingsError("");
+        return;
+      }
+
+      const requestId = ++latestSastFindingsRequestRef.current;
+      setSastFindingsLoading(true);
+      setSastFindingsError("");
+
+      try {
+        const data = await fetchScanFindings(runId, {
+          severity:
+            String(findingSeverityFilter || "").toLowerCase() === "all"
+              ? ""
+              : findingSeverityFilter,
+          title:
+            String(findingTitleFilter || "").trim().toLowerCase() === "all"
+              ? ""
+              : findingTitleFilter,
+        });
+
+        if (requestId !== latestSastFindingsRequestRef.current) {
+          return;
+        }
+
+        const normalizedFindings = (data?.findings || []).map((finding) => ({
+          source: "SAST",
+          title: finding.title,
+          severity: finding.severity,
+          location:
+            finding.location ||
+            [finding.file, finding.line].filter(Boolean).join(":") ||
+            "N/A",
+          errorMessage: finding.message || finding.description || "",
+          message: finding.message || "",
+          recommendation:
+            finding.recommendation || finding.message || finding.description || "",
+          description: finding.description || "",
+          evidence: finding.evidence || "",
+          file: finding.file || "",
+          line: finding.line,
+        }));
+
+        setSastFindings(normalizedFindings);
+      } catch (error) {
+        if (requestId !== latestSastFindingsRequestRef.current) {
+          return;
+        }
+
+        setSastFindings([]);
+        setSastFindingsError(
+          "Failed to load full SAST findings for the latest run.",
+        );
+      } finally {
+        if (requestId === latestSastFindingsRequestRef.current) {
+          setSastFindingsLoading(false);
+        }
+      }
+    }
+
+    loadLatestSastFindings();
+  }, [
+    activeTab,
+    summary?.latestSast?.runId,
+    findingTitleFilter,
+    findingSeverityFilter,
+  ]);
 
   useEffect(() => {
     async function loadPentestScanDetail() {
@@ -842,6 +940,25 @@ function App() {
                     <div className="results-header">
                       <div>
                         <h2>LATEST SAST SCAN</h2>
+                        <p className="section-description">
+                          Full findings for the latest SAST run are loaded from
+                          the dedicated findings API, not the summary payload.
+                        </p>
+                      </div>
+
+                      <div className="results-chip-row">
+                        <span className="results-chip">
+                          <strong>Run ID</strong>
+                          <span>{summary?.latestSast?.runId ?? "N/A"}</span>
+                        </span>
+                        <span className="results-chip">
+                          <strong>Findings</strong>
+                          <span>
+                            {sastFindingsLoading
+                              ? "Loading..."
+                              : visibleVulnerabilities.length}
+                          </span>
+                        </span>
                       </div>
                     </div>
 
@@ -850,9 +967,12 @@ function App() {
                       <OverviewCards summary={filteredSummary} variant="sast" />
                     </section>
 
+                    {sastFindingsError ? (
+                      <p className="error-message">{sastFindingsError}</p>
+                    ) : null}
                     <VulnerabilityTable
                       vulnerabilities={visibleVulnerabilities}
-                      isLoading={loading}
+                      isLoading={sastFindingsLoading}
                       onDownload={handleDownloadFindings}
                       showFilters
                       findingTitleFilter={findingTitleFilter}

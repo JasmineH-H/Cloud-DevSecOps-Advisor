@@ -65,6 +65,10 @@ resource "aws_ecs_task_definition" "backend" {
           value = aws_dynamodb_table.scan_results.name
         },
         {
+          name  = "SCAN_FINDINGS_TABLE"
+          value = aws_dynamodb_table.scan_findings.name
+        },
+        {
           name  = "PENTEST_LAMBDA_NAME"
           value = aws_lambda_function.pentest_trigger.function_name
         },

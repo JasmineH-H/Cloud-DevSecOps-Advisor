@@ -1,11 +1,22 @@
-const { PutCommand, QueryCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
+const {
+  BatchWriteCommand,
+  PutCommand,
+  QueryCommand,
+  ScanCommand
+} = require("@aws-sdk/lib-dynamodb");
 const { ListTablesCommand } = require("@aws-sdk/client-dynamodb");
 const { dynamoDocClient } = require("../config/aws");
 
 const TABLE_NAME = process.env.SCAN_RESULTS_TABLE;
+const FINDINGS_TABLE_NAME = process.env.SCAN_FINDINGS_TABLE;
+const FINDINGS_BATCH_WRITE_MAX_RETRIES = 8;
 
 if (!TABLE_NAME) {
   throw new Error("Missing SCAN_RESULTS_TABLE env var.");
+}
+
+if (!FINDINGS_TABLE_NAME) {
+  throw new Error("Missing SCAN_FINDINGS_TABLE env var.");
 }
 
 async function saveToDynamo(item) {
@@ -78,6 +89,118 @@ async function getScanByRunIdFromDynamo(runId) {
   return null;
 }
 
+function normalizeFindingSeverity(severity) {
+  return String(severity || "low").trim().toLowerCase();
+}
+
+function buildFindingItem(runId, finding, index, metadata = {}) {
+  const title =
+    String(finding?.title || finding?.name || `Finding ${index + 1}`).trim() ||
+    `Finding ${index + 1}`;
+
+  return {
+    runId: String(runId),
+    findingId: `${String(index + 1).padStart(4, "0")}#${title}`,
+    findingIndex: index + 1,
+    repo: metadata.repo || null,
+    owner: metadata.owner || null,
+    name: metadata.name || null,
+    scanType: metadata.scanType || "SAST",
+    timestamp: metadata.timestamp || null,
+    branch: metadata.branch || null,
+    commitSha: metadata.commitSha || null,
+    toolName: metadata.toolName || null,
+    title,
+    normalizedTitle: title.toLowerCase(),
+    severity: normalizeFindingSeverity(finding?.severity),
+    location: finding?.location || null,
+    recommendation: finding?.recommendation || finding?.message || null,
+    description: finding?.description || null,
+    message: finding?.message || null,
+    file: finding?.file || finding?.path || null,
+    line:
+      finding?.line === undefined || finding?.line === null
+        ? null
+        : Number(finding.line),
+    column:
+      finding?.column === undefined || finding?.column === null
+        ? null
+        : Number(finding.column),
+    evidence: finding?.evidence || null,
+    rawFinding: finding,
+    ingestedAt: new Date().toISOString()
+  };
+}
+
+async function saveFindingsToDynamo(runId, findings = [], metadata = {}) {
+  const findingItems = Array.isArray(findings)
+    ? findings.map((finding, index) => buildFindingItem(runId, finding, index, metadata))
+    : [];
+
+  if (findingItems.length === 0) {
+    return [];
+  }
+
+  for (let index = 0; index < findingItems.length; index += 25) {
+    const chunk = findingItems.slice(index, index + 25);
+    let pendingRequests = chunk.map((item) => ({
+      PutRequest: { Item: item }
+    }));
+    let attempt = 0;
+
+    do {
+      const command = new BatchWriteCommand({
+        RequestItems: {
+          [FINDINGS_TABLE_NAME]: pendingRequests
+        }
+      });
+
+      const response = await dynamoDocClient.send(command);
+      pendingRequests = response.UnprocessedItems?.[FINDINGS_TABLE_NAME] || [];
+
+      if (pendingRequests.length === 0) {
+        break;
+      }
+
+      attempt += 1;
+      if (attempt > FINDINGS_BATCH_WRITE_MAX_RETRIES) {
+        throw new Error(
+          `Failed to persist all findings for run ${runId}: ${pendingRequests.length} items remained unprocessed.`
+        );
+      }
+
+      // Back off briefly when DynamoDB throttles part of a batch write.
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(1000, 50 * 2 ** attempt))
+      );
+    } while (pendingRequests.length > 0);
+  }
+
+  return findingItems;
+}
+
+async function getFindingsByRunIdFromDynamo(runId) {
+  const items = [];
+  let exclusiveStartKey;
+
+  do {
+    const command = new QueryCommand({
+      TableName: FINDINGS_TABLE_NAME,
+      KeyConditionExpression: "runId = :runIdValue",
+      ExpressionAttributeValues: {
+        ":runIdValue": String(runId)
+      },
+      ExclusiveStartKey: exclusiveStartKey
+    });
+
+    const response = await dynamoDocClient.send(command);
+    items.push(...(response.Items || []));
+    exclusiveStartKey = response.LastEvaluatedKey;
+  } while (exclusiveStartKey);
+
+  return items;
+}
+
 async function getRepoOptionsFromDynamo() {
   try {
     const command = new ScanCommand({
@@ -145,6 +268,8 @@ module.exports = {
   saveToDynamo,
   getScansByRepoFromDynamo,
   getScanByRunIdFromDynamo,
+  saveFindingsToDynamo,
+  getFindingsByRunIdFromDynamo,
   getRepoOptionsFromDynamo,
   getDynamoClientStatus
 };

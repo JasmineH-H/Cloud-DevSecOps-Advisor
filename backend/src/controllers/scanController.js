@@ -9,11 +9,15 @@ const {
   getScansByRepoPrimary,
   getLatestScanByRepoPrimary,
   getScanByRunIdPrimary,
+  getFindingsByRunIdPrimary,
   buildDashboardSummaryPrimary,
   getDynamoItemsByRepo,
   getDynamoItemByRunId,
 } = require("../services/scanService");
-const { getDynamoClientStatus } = require("../services/dynamoService");
+const {
+  getDynamoClientStatus,
+  saveFindingsToDynamo
+} = require("../services/dynamoService");
 const { getS3ClientStatus } = require("../services/s3Service");
 const {
   invokePentestNow,
@@ -70,6 +74,7 @@ async function ingestSAST(req, res) {
 
     const fallbackSummary = payload.result || {};
     const fallbackTopFindings = payload.result?.topFindings || [];
+    const fallbackAllFindings = payload.result?.allFindings || [];
     const fallbackReportContent = payload.result || payload;
 
     const normalizedSeverityCounts =
@@ -118,6 +123,20 @@ async function ingestSAST(req, res) {
     };
 
     const savedRecord = await saveScanRecord(normalizedPayload);
+    const findingsToStore = Array.isArray(fallbackAllFindings) && fallbackAllFindings.length > 0
+      ? fallbackAllFindings
+      : fallbackTopFindings;
+
+    await saveFindingsToDynamo(runId, findingsToStore, {
+      repo: repoObj.fullName,
+      owner: repoObj.owner,
+      name: repoObj.name,
+      scanType: "SAST",
+      timestamp: normalizedPayload.run.timestamp,
+      branch: normalizedPayload.run.branch,
+      commitSha: normalizedPayload.run.commitSha,
+      toolName: normalizedPayload.run.toolName,
+    });
 
     return res.status(200).json({
       success: true,
@@ -128,6 +147,54 @@ async function ingestSAST(req, res) {
     return res.status(500).json({
       success: false,
       message: "Failed to process ingest payload",
+      error: error.message,
+    });
+  }
+}
+
+async function getScanFindings(req, res) {
+  const runId = req.query.runId || req.params.runId;
+  const severityFilter = String(req.query.severity || "").trim().toLowerCase();
+  const titleFilter = String(req.query.title || "").trim().toLowerCase();
+
+  if (!runId) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing required query parameter: runId",
+    });
+  }
+
+  try {
+    let findings = await getFindingsByRunIdPrimary(runId);
+
+    if (severityFilter) {
+      findings = findings.filter(
+        (finding) => String(finding.severity || "").toLowerCase() === severityFilter,
+      );
+    }
+
+    if (titleFilter) {
+      findings = findings.filter((finding) =>
+        String(finding.title || "").toLowerCase().includes(titleFilter),
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        runId,
+        totalFindings: findings.length,
+        filters: {
+          severity: severityFilter || null,
+          title: titleFilter || null,
+        },
+        findings,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to query scan findings",
       error: error.message,
     });
   }
@@ -539,6 +606,7 @@ module.exports = {
   getLatestRepoScan,
   getScanDetail,
   getDashboardSummary,
+  getScanFindings,
   getRepoDynamoItems,
   getScanDynamoItem,
   getAwsDynamoStatus,

@@ -7,6 +7,7 @@ const {
   saveToDynamo,
   getScansByRepoFromDynamo,
   getScanByRunIdFromDynamo,
+  getFindingsByRunIdFromDynamo,
   getRepoOptionsFromDynamo
 } = require("./dynamoService");
 
@@ -395,6 +396,7 @@ async function getScanByRunIdLive(runId) {
             toolName: jsonData.toolName,
             toolVersion: jsonData.toolVersion,
             reportFormat: jsonData.reportFormat,
+            reportContent: jsonData.reportContent || null,
             rawReportS3Key: jsonData.rawReportS3Key || null,
             reportS3Key: key
           };
@@ -508,6 +510,18 @@ async function getScanByRunIdPrimary(runId) {
     const scan = await getScanByRunIdFromDynamo(runId);
     if (scan) {
       console.log("[getScanByRunIdPrimary] DynamoDB returned scan:", scan.runId);
+
+      if (scan.reportS3Key) {
+        const s3Record = await getJsonObject(scan.reportS3Key);
+        if (s3Record) {
+          return {
+            ...scan,
+            reportContent: s3Record.reportContent || null,
+            rawReportS3Key: s3Record.rawReportS3Key || scan.rawReportS3Key || null
+          };
+        }
+      }
+
       return scan;
     }
   } catch (error) {
@@ -520,6 +534,60 @@ async function getScanByRunIdPrimary(runId) {
     console.error("[getScanByRunIdPrimary] S3 fallback failed:", error.message);
     throw error;
   }
+}
+
+async function getFindingsByRunIdPrimary(runId) {
+  try {
+    console.log("[getFindingsByRunIdPrimary] Reading from DynamoDB for runId:", runId);
+    const findings = await getFindingsByRunIdFromDynamo(runId);
+    if (findings && findings.length > 0) {
+      console.log(
+        "[getFindingsByRunIdPrimary] DynamoDB returned findings:",
+        findings.length
+      );
+      return findings;
+    }
+  } catch (error) {
+    console.warn(
+      "[getFindingsByRunIdPrimary] DynamoDB failed, falling back to S3:",
+      error.message
+    );
+  }
+
+  console.log("[getFindingsByRunIdPrimary] Falling back to S3 for runId:", runId);
+  const scan = await getScanByRunIdLive(runId);
+  const reportContent = scan?.reportContent || {};
+  const allFindings = Array.isArray(reportContent.allFindings)
+    ? reportContent.allFindings
+    : Array.isArray(reportContent.topFindings)
+      ? reportContent.topFindings
+      : [];
+
+  return allFindings.map((finding, index) => ({
+    runId: String(runId),
+    findingId: `${String(index + 1).padStart(4, "0")}#${finding.title || finding.name || "finding"}`,
+    findingIndex: index + 1,
+    repo: scan?.repo || null,
+    scanType: scan?.scanType || "SAST",
+    timestamp: scan?.timestamp || null,
+    branch: scan?.branch || null,
+    commitSha: scan?.commitSha || null,
+    toolName: scan?.toolName || null,
+    title: finding.title || finding.name || "SAST finding",
+    normalizedTitle: String(
+      finding.title || finding.name || "SAST finding"
+    ).toLowerCase(),
+    severity: String(finding.severity || "low").toLowerCase(),
+    location: finding.location || null,
+    recommendation: finding.recommendation || finding.message || null,
+    description: finding.description || null,
+    message: finding.message || null,
+    file: finding.file || finding.path || null,
+    line: finding.line ?? null,
+    column: finding.column ?? null,
+    evidence: finding.evidence || null,
+    rawFinding: finding
+  }));
 }
 
 async function buildDashboardSummaryPrimary(owner, repo) {
@@ -572,5 +640,6 @@ module.exports = {
   getScansByRepoPrimary,
   getLatestScanByRepoPrimary,
   getScanByRunIdPrimary,
+  getFindingsByRunIdPrimary,
   buildDashboardSummaryPrimary
 };

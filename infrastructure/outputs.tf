@@ -38,6 +38,11 @@ output "dynamodb_table_name" {
   value       = aws_dynamodb_table.scan_results.name
 }
 
+output "dynamodb_findings_table_name" {
+  description = "DynamoDB table name for per-run scan findings"
+  value       = aws_dynamodb_table.scan_findings.name
+}
+
 output "backend_service_name" {
   description = "ECS backend service name"
   value       = aws_ecs_service.backend.name
