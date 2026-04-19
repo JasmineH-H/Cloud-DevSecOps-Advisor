@@ -8,6 +8,7 @@ import urllib.error
 with open("sast-result.json", "r", encoding="utf-8") as f:
     scan_data = json.load(f)
 
+
 def flatten_results(results_obj):
     if isinstance(results_obj, list):
         return [item for item in results_obj if isinstance(item, dict)]
@@ -27,6 +28,7 @@ def flatten_results(results_obj):
         return flattened
 
     return []
+
 
 # Extract findings
 results = flatten_results(scan_data.get("results", []))
@@ -56,7 +58,9 @@ for r in results:
     if not isinstance(r, dict):
         continue
 
-    severity_raw = str(r.get("extra", {}).get("severity") or r.get("severity") or "").lower()
+    severity_raw = str(
+        r.get("extra", {}).get("severity") or r.get("severity") or ""
+    ).lower()
     severity = severity_map.get(severity_raw, "low")
     path = r.get("path") or r.get("file", "")
     line = r.get("start", {}).get("line") or r.get("line", 0)

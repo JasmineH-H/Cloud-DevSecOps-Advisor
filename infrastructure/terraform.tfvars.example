@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (gitignored) and customize if needed.
+#
+# Optional: pentest a URL other than the Juice Shop ALB in this stack.
+# pentest_target_url = "http://your-vulnerable-app-alb.region.elb.amazonaws.com"
+#
+# Optional: label stored with pentest results (matches dashboard repo filter).
+# pentest_repo_name = "vulnerable-node-app"
+#
+# Optional: override DynamoDB table name (default: "<project_name>-scan-results")
+# scan_results_table_name = "devsecops-advisor-scan-results"
+#
+# Optional: ACM certificate ARN for HTTPS ALB listener (HTTP will redirect to HTTPS when set)
+# alb_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"

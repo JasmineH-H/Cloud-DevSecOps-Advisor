@@ -1,3 +1,14 @@
+# ── CloudWatch Log Group (before task writes logs) ────────────────────────────
+
+resource "aws_cloudwatch_log_group" "juiceshop" {
+  name              = "/ecs/${var.project_name}-juiceshop"
+  retention_in_days = 7
+
+  tags = merge(local.common_tags, {
+    Name = "${var.project_name}-juiceshop-logs"
+  })
+}
+
 # ── ECS Task Definition for Juice Shop ───────────────────────────────────────
 
 resource "aws_ecs_task_definition" "juiceshop" {
@@ -7,6 +18,8 @@ resource "aws_ecs_task_definition" "juiceshop" {
   cpu                      = "512"
   memory                   = "1024"
   execution_role_arn       = data.aws_iam_role.ecs_task_execution.arn
+
+  depends_on = [aws_cloudwatch_log_group.juiceshop]
 
   container_definitions = jsonencode([
     {
@@ -35,17 +48,6 @@ resource "aws_ecs_task_definition" "juiceshop" {
 
   tags = merge(local.common_tags, {
     Name = "${var.project_name}-juiceshop-taskdef"
-  })
-}
-
-# ── CloudWatch Log Group ──────────────────────────────────────────────────────
-
-resource "aws_cloudwatch_log_group" "juiceshop" {
-  name              = "/ecs/${var.project_name}-juiceshop"
-  retention_in_days = 7
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_name}-juiceshop-logs"
   })
 }
 

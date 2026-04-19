@@ -66,25 +66,44 @@ variable "desired_count" {
   default     = 1
 }
 
-variable "ingest_token_sast" {
-  description = "Bearer token for POST /ingest/sast"
+variable "sast_secret_name" {
+  description = "Secrets Manager secret name for the SAST ingest token"
   type        = string
-  sensitive   = true
+  default     = "devsecops/sast"
 }
 
-variable "ingest_token_pentest" {
-  description = "Bearer token for POST /ingest/pentest"
+variable "pentest_secret_name" {
+  description = "Secrets Manager secret name for the pentest ingest token"
   type        = string
-  sensitive   = true
+  default     = "devsecops/pentest"
 }
 
 variable "pentest_target_url" {
-  description = "URL of the app to pentest (e.g. vulnerable-node-app ALB)"
+  description = "Optional override for pentest TARGET_URL. Leave empty to use the Juice Shop ALB deployed in this stack (see juiceshop_url output)."
   type        = string
+  default     = ""
 }
 
 variable "pentest_repo_name" {
   description = "Repo label for tagging pentest results"
   type        = string
   default     = "vulnerable-node-app"
+}
+
+variable "scan_results_table_name" {
+  description = "Optional DynamoDB table name for scan results. Leave empty to use <project_name>-scan-results."
+  type        = string
+  default     = ""
+}
+
+variable "alb_certificate_arn" {
+  description = "Optional ACM certificate ARN. When set, ALB serves HTTPS on 443 and redirects HTTP to HTTPS."
+  type        = string
+  default     = ""
+}
+
+variable "s3_force_destroy" {
+  description = "Whether S3 buckets can be force-deleted with all objects during terraform destroy."
+  type        = bool
+  default     = false
 }

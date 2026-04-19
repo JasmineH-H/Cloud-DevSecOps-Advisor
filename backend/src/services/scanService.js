@@ -1,15 +1,25 @@
 const { addScanRecord, getAllScanRecords } = require("../data/scanStore");
 const { mapRecordToDynamoItem } = require("../utils/dynamoMapper");
 const { formatGitHubComment } = require("../utils/githubCommentFormatter");
-const { uploadReportToS3 } = require("./s3Service");
+const { SEVERITY_SORT_ORDER } = require("../config/constants");
+const { uploadReportToS3, listReportObjects, getJsonObject } = require("./s3Service");
 const {
   saveToDynamo,
   getScansByRepoFromDynamo,
-  getScanByRunIdFromDynamo
+  getScanByRunIdFromDynamo,
+  getFindingsByRunIdFromDynamo,
+  getRepoOptionsFromDynamo
 } = require("./dynamoService");
 
+function compareBySeverityDesc(a, b) {
+  const severityA = SEVERITY_SORT_ORDER[a.severity?.toLowerCase()] || 0;
+  const severityB = SEVERITY_SORT_ORDER[b.severity?.toLowerCase()] || 0;
+  return severityB - severityA;
+}
 
 function buildScanResponse(payload) {
+  // Returns the FULL normalized record that will be stored in S3
+  // Includes reportContent with the complete payload/report data
   return {
     source: payload.source,
     scanType: payload.scanType,
@@ -23,10 +33,12 @@ function buildScanResponse(payload) {
     commitSha: payload.run.commitSha,
     toolName: payload.run.toolName,
     toolVersion: payload.run.toolVersion,
+    rawRiskScore: payload.summary.rawRiskScore,
     riskScore: payload.summary.riskScore,
     severityCounts: payload.summary.severityCounts,
     totalFindings: payload.summary.totalFindings,
     topFindings: payload.topFindings || [],
+    rawReportS3Key: payload.rawReportS3Key || null,
     reportFormat: payload.report.format,
     reportContent: payload.report.content
   };
@@ -34,35 +46,67 @@ function buildScanResponse(payload) {
 
 async function saveScanRecord(payload) {
   const record = buildScanResponse(payload);
-  addScanRecord(record);
-  try {
-    const dynamoItem = {
-    repo: record.repo,
-    timestamp: record.timestamp,
-    runId: record.runId,
-    scanType: record.scanType,
-    status: record.status,
-    riskScore: record.riskScore,
-    severityCounts: record.severityCounts,
-    totalFindings: record.totalFindings,
-    topFindings: record.topFindings,
-    branch: record.branch,
-    commitSha: record.commitSha,
-    toolName: record.toolName,
-    toolVersion: record.toolVersion,
-    reportFormat: record.reportFormat,
-    reportS3Key: `reports/${record.repo}/${record.scanType}/${record.runId}.json`
-  };
+  const s3Key = `reports/${record.repo}/${String(record.scanType).toLowerCase()}/${record.runId}.json`;
 
-    const s3Key = dynamoItem.reportS3Key;
-    await uploadReportToS3(s3Key, record);
-    console.log("S3 upload success:", s3Key);
+  // Debug: Log before starting
+  console.log("[saveScanRecord] Starting ingest:", {
+    repo: record.repo,
+    runId: record.runId,
+    scanType: record.scanType
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // STEP 1: DynamoDB is PRIMARY - write summary item first
+  // ═══════════════════════════════════════════════════════════════════
+  // DynamoDB failure = ingest fails; DynamoDB success = ingest succeeds
+  try {
+    console.log("[saveScanRecord] Starting DynamoDB write for runId:", record.runId);
+    // Build summary item for DynamoDB - excludes reportContent
+    const dynamoItem = {
+      repo: record.repo,
+      timestamp: record.timestamp,
+      runId: record.runId,
+      scanType: record.scanType,
+      status: record.status,
+      rawRiskScore: record.rawRiskScore,
+      riskScore: record.riskScore,
+      severityCounts: record.severityCounts,
+      totalFindings: record.totalFindings,
+      topFindings: record.topFindings,
+      branch: record.branch,
+      commitSha: record.commitSha,
+      toolName: record.toolName,
+      toolVersion: record.toolVersion,
+      reportFormat: record.reportFormat,
+      reportS3Key: s3Key,
+      rawReportS3Key: record.rawReportS3Key || null
+    };
 
     await saveToDynamo(dynamoItem);
-    console.log("DynamoDB write success:", record.runId);
+    console.log("[saveScanRecord] DynamoDB write success:", record.runId);
   } catch (error) {
-    console.error("AWS persistence failed:", error);
+    console.error("[saveScanRecord] DynamoDB write FAILED:", { message: error.message, code: error.code });
+    throw new Error(`DYNAMODB_WRITE_FAILED: ${error.message}`);
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // STEP 2: Add to in-memory store for local queries
+  // ═══════════════════════════════════════════════════════════════════
+  addScanRecord(record);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // STEP 3: S3 is OPTIONAL - upload full normalized record
+  // ═══════════════════════════════════════════════════════════════════
+  // S3 failure = only warn, do NOT fail the ingest
+  try {
+    console.log("[saveScanRecord] Attempting S3 upload to key:", s3Key);
+    await uploadReportToS3(s3Key, record);
+    console.log("[saveScanRecord] S3 upload success:", s3Key);
+  } catch (error) {
+    console.warn(`[saveScanRecord] S3 upload failed (optional): ${error.message}`);
+  }
+
+  // Return the full normalized record (with DynamoDB and optional S3)
   return record;
 }
 
@@ -148,18 +192,7 @@ function buildDashboardSummary(owner, repo) {
     ? formatGitHubComment(latestSast)
     : null;
 
-  const severityOrder = {
-    critical: 4,
-    high: 3,
-    medium: 2,
-    low: 1
-  };
-
-  prioritizedVulnerabilities.sort((a, b) => {
-    const severityA = severityOrder[a.severity?.toLowerCase()] || 0;
-    const severityB = severityOrder[b.severity?.toLowerCase()] || 0;
-    return severityB - severityA;
-  });
+  prioritizedVulnerabilities.sort(compareBySeverityDesc);
 
   return {
     repo: `${owner}/${repo}`,
@@ -212,28 +245,121 @@ function getRepoOptions() {
   return result;
 }
 
-async function getScansByRepoLive(owner, repo) {
-  const fullName = `${owner}/${repo}`;
-  const items = await getScansByRepoFromDynamo(fullName);
+async function getRepoOptionsLive() {
+  try {
+    const allKeys = await listReportObjects("reports/");
+    const ownerMap = new Map();
 
-  return items.map((item) => ({
-    repo: item.repo,
-    timestamp: item.timestamp,
-    runId: item.runId,
-    scanType: item.scanType,
-    status: item.status,
-    riskScore: item.riskScore,
-    severityCounts: item.severityCounts,
-    totalFindings: item.totalFindings,
-    topFindings: item.topFindings,
-    branch: item.branch,
-    commitSha: item.commitSha,
-    toolName: item.toolName,
-    toolVersion: item.toolVersion,
-    reportFormat: item.reportFormat,
-    reportS3Key: item.reportS3Key
-  }));
+    for (const key of allKeys) {
+      try {
+        const record = await getJsonObject(key);
+        
+        if (!record) {
+          continue;
+        }
+
+        let owner, repo;
+        
+        // Try to get owner and name from record directly
+        if (record.owner && record.name) {
+          owner = record.owner;
+          repo = record.name;
+        } else if (record.repo) {
+          // Check if repo contains "/"
+          if (record.repo.includes("/")) {
+            const [ownerPart, repoPart] = record.repo.split("/");
+            owner = ownerPart;
+            repo = repoPart;
+          } else {
+            // Single repo name
+            owner = "unknown";
+            repo = record.repo;
+          }
+        } else {
+          // Skip if we can't determine repo
+          continue;
+        }
+
+        if (!ownerMap.has(owner)) {
+          ownerMap.set(owner, new Set());
+        }
+
+        ownerMap.get(owner).add(repo);
+      } catch (error) {
+        console.error(`Error processing S3 object ${key}:`, error);
+        continue;
+      }
+    }
+
+    const result = [];
+
+    for (const [owner, repoSet] of ownerMap.entries()) {
+      result.push({
+        owner,
+        repositories: Array.from(repoSet).sort()
+      });
+    }
+
+    result.sort((a, b) => a.owner.localeCompare(b.owner));
+
+    return result;
+  } catch (error) {
+    throw new Error(`S3_LIST_FAILED:getRepoOptionsLive:${error.message}`);
+  }
 }
+
+async function getScansByRepoLive(owner, repo) {
+  try {
+    const fullName = `${owner}/${repo}`;
+    
+    // Try both prefixes: full name and just repo name
+    const prefix1 = `reports/${fullName}/`;
+    const prefix2 = `reports/${repo}/`;
+    
+    const keys1 = await listReportObjects(prefix1);
+    const keys2 = await listReportObjects(prefix2);
+    const allKeys = [...new Set([...keys1, ...keys2])]; // Deduplicate
+
+    const scans = [];
+
+    for (const key of allKeys) {
+      try {
+        const jsonData = await getJsonObject(key);
+        
+        if (jsonData && jsonData.runId) {
+          scans.push({
+            repo: jsonData.repo || fullName,
+            timestamp: jsonData.timestamp,
+            runId: jsonData.runId,
+            scanType: jsonData.scanType,
+            status: jsonData.status,
+            riskScore: jsonData.riskScore,
+            severityCounts: jsonData.severityCounts,
+            totalFindings: jsonData.totalFindings,
+            topFindings: jsonData.topFindings || [],
+            branch: jsonData.branch,
+            commitSha: jsonData.commitSha,
+            toolName: jsonData.toolName,
+            toolVersion: jsonData.toolVersion,
+            reportFormat: jsonData.reportFormat,
+            rawReportS3Key: jsonData.rawReportS3Key || null,
+            reportS3Key: key
+          });
+        }
+      } catch (error) {
+        console.error(`Error reading S3 object ${key}:`, error);
+      }
+    }
+
+    // Sort by timestamp descending (newest first)
+    scans.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    return scans;
+  } catch (error) {
+    throw new Error(`S3_LIST_FAILED:getScansByRepoLive:${error.message}`);
+  }
+}
+
 
 async function getLatestScanByRepoLive(owner, repo) {
   const scans = await getScansByRepoLive(owner, repo);
@@ -246,30 +372,46 @@ async function getLatestScanByRepoLive(owner, repo) {
 }
 
 async function getScanByRunIdLive(runId) {
-  const item = await getScanByRunIdFromDynamo(runId);
+  try {
+    // List all report objects
+    const allKeys = await listReportObjects("reports/");
 
-  if (!item) {
+    for (const key of allKeys) {
+      try {
+        const jsonData = await getJsonObject(key);
+        
+        if (jsonData && String(jsonData.runId) === String(runId)) {
+          return {
+            repo: jsonData.repo,
+            timestamp: jsonData.timestamp,
+            runId: jsonData.runId,
+            scanType: jsonData.scanType,
+            status: jsonData.status,
+            riskScore: jsonData.riskScore,
+            severityCounts: jsonData.severityCounts,
+            totalFindings: jsonData.totalFindings,
+            topFindings: jsonData.topFindings || [],
+            branch: jsonData.branch,
+            commitSha: jsonData.commitSha,
+            toolName: jsonData.toolName,
+            toolVersion: jsonData.toolVersion,
+            reportFormat: jsonData.reportFormat,
+            reportContent: jsonData.reportContent || null,
+            rawReportS3Key: jsonData.rawReportS3Key || null,
+            reportS3Key: key
+          };
+        }
+      } catch (error) {
+        console.error(`Error reading S3 object ${key}:`, error);
+      }
+    }
+
     return null;
+  } catch (error) {
+    throw new Error(`S3_LIST_FAILED:getScanByRunIdLive:${error.message}`);
   }
-
-  return {
-    repo: item.repo,
-    timestamp: item.timestamp,
-    runId: item.runId,
-    scanType: item.scanType,
-    status: item.status,
-    riskScore: item.riskScore,
-    severityCounts: item.severityCounts,
-    totalFindings: item.totalFindings,
-    topFindings: item.topFindings,
-    branch: item.branch,
-    commitSha: item.commitSha,
-    toolName: item.toolName,
-    toolVersion: item.toolVersion,
-    reportFormat: item.reportFormat,
-    reportS3Key: item.reportS3Key
-  };
 }
+
 
 async function buildDashboardSummaryLive(owner, repo) {
   const scans = await getScansByRepoLive(owner, repo);
@@ -299,18 +441,7 @@ async function buildDashboardSummaryLive(owner, repo) {
     }
   }
 
-  const severityOrder = {
-    critical: 4,
-    high: 3,
-    medium: 2,
-    low: 1
-  };
-
-  prioritizedVulnerabilities.sort((a, b) => {
-    const severityA = severityOrder[a.severity?.toLowerCase()] || 0;
-    const severityB = severityOrder[b.severity?.toLowerCase()] || 0;
-    return severityB - severityA;
-  });
+  prioritizedVulnerabilities.sort(compareBySeverityDesc);
 
   const simulatedGitHubComment = latestSast
     ? formatGitHubComment(latestSast)
@@ -318,6 +449,168 @@ async function buildDashboardSummaryLive(owner, repo) {
 
   return {
     repo: `${owner}/${repo}`,
+    overallRiskScore,
+    latestSast,
+    latestPentest,
+    prioritizedVulnerabilities,
+    simulatedGitHubComment
+  };
+}
+
+// PRIMARY functions: DynamoDB-first with optional S3 fallback
+async function getRepoOptionsPrimary() {
+  try {
+    console.log("[getRepoOptionsPrimary] Reading from DynamoDB");
+    const options = await getRepoOptionsFromDynamo();
+    if (options && options.length > 0) {
+      console.log("[getRepoOptionsPrimary] DynamoDB returned:", options.length, "owners");
+      return options;
+    }
+  } catch (error) {
+    console.warn("[getRepoOptionsPrimary] DynamoDB failed, falling back to S3:", error.message);
+  }
+  console.log("[getRepoOptionsPrimary] Falling back to S3");
+  try {
+    return await getRepoOptionsLive();
+  } catch (error) {
+    console.error("[getRepoOptionsPrimary] S3 fallback failed:", error.message);
+    throw error;
+  }
+}
+
+async function getScansByRepoPrimary(owner, repo) {
+  const fullName = `${owner}/${repo}`;
+  try {
+    console.log("[getScansByRepoPrimary] Reading from DynamoDB for:", fullName);
+    const scans = await getScansByRepoFromDynamo(fullName);
+    if (scans && scans.length > 0) {
+      console.log("[getScansByRepoPrimary] DynamoDB returned:", scans.length, "scans");
+      return scans;
+    }
+  } catch (error) {
+    console.warn("[getScansByRepoPrimary] DynamoDB failed, falling back to S3:", error.message);
+  }
+  console.log("[getScansByRepoPrimary] Falling back to S3 for:", fullName);
+  try {
+    return await getScansByRepoLive(owner, repo);
+  } catch (error) {
+    console.error("[getScansByRepoPrimary] S3 fallback failed:", error.message);
+    throw error;
+  }
+}
+
+async function getLatestScanByRepoPrimary(owner, repo) {
+  const scans = await getScansByRepoPrimary(owner, repo);
+  return scans.length === 0 ? null : scans[0];
+}
+
+async function getScanByRunIdPrimary(runId) {
+  try {
+    console.log("[getScanByRunIdPrimary] Reading from DynamoDB for runId:", runId);
+    const scan = await getScanByRunIdFromDynamo(runId);
+    if (scan) {
+      console.log("[getScanByRunIdPrimary] DynamoDB returned scan:", scan.runId);
+
+      if (scan.reportS3Key) {
+        const s3Record = await getJsonObject(scan.reportS3Key);
+        if (s3Record) {
+          return {
+            ...scan,
+            reportContent: s3Record.reportContent || null,
+            rawReportS3Key: s3Record.rawReportS3Key || scan.rawReportS3Key || null
+          };
+        }
+      }
+
+      return scan;
+    }
+  } catch (error) {
+    console.warn("[getScanByRunIdPrimary] DynamoDB failed, falling back to S3:", error.message);
+  }
+  console.log("[getScanByRunIdPrimary] Falling back to S3 for runId:", runId);
+  try {
+    return await getScanByRunIdLive(runId);
+  } catch (error) {
+    console.error("[getScanByRunIdPrimary] S3 fallback failed:", error.message);
+    throw error;
+  }
+}
+
+async function getFindingsByRunIdPrimary(runId) {
+  try {
+    console.log("[getFindingsByRunIdPrimary] Reading from DynamoDB for runId:", runId);
+    const findings = await getFindingsByRunIdFromDynamo(runId);
+    if (findings && findings.length > 0) {
+      console.log(
+        "[getFindingsByRunIdPrimary] DynamoDB returned findings:",
+        findings.length
+      );
+      return findings;
+    }
+  } catch (error) {
+    console.warn(
+      "[getFindingsByRunIdPrimary] DynamoDB failed, falling back to S3:",
+      error.message
+    );
+  }
+
+  console.log("[getFindingsByRunIdPrimary] Falling back to S3 for runId:", runId);
+  const scan = await getScanByRunIdLive(runId);
+  const reportContent = scan?.reportContent || {};
+  const allFindings = Array.isArray(reportContent.allFindings)
+    ? reportContent.allFindings
+    : Array.isArray(reportContent.topFindings)
+      ? reportContent.topFindings
+      : [];
+
+  return allFindings.map((finding, index) => ({
+    runId: String(runId),
+    findingId: `${String(index + 1).padStart(4, "0")}#${finding.title || finding.name || "finding"}`,
+    findingIndex: index + 1,
+    repo: scan?.repo || null,
+    scanType: scan?.scanType || "SAST",
+    timestamp: scan?.timestamp || null,
+    branch: scan?.branch || null,
+    commitSha: scan?.commitSha || null,
+    toolName: scan?.toolName || null,
+    title: finding.title || finding.name || "SAST finding",
+    normalizedTitle: String(
+      finding.title || finding.name || "SAST finding"
+    ).toLowerCase(),
+    severity: String(finding.severity || "low").toLowerCase(),
+    location: finding.location || null,
+    recommendation: finding.recommendation || finding.message || null,
+    description: finding.description || null,
+    message: finding.message || null,
+    file: finding.file || finding.path || null,
+    line: finding.line ?? null,
+    column: finding.column ?? null,
+    evidence: finding.evidence || null,
+    rawFinding: finding
+  }));
+}
+
+async function buildDashboardSummaryPrimary(owner, repo) {
+  const fullName = `${owner}/${repo}`;
+  const scans = await getScansByRepoPrimary(owner, repo);
+  const latestSast = scans.find((scan) => scan.scanType === "SAST") || null;
+  const latestPentest = scans.find((scan) => scan.scanType === "PENTEST") || null;
+  const overallRiskScore = calculateOverallRiskScore(latestSast, latestPentest);
+  const prioritizedVulnerabilities = [];
+  if (latestSast && Array.isArray(latestSast.topFindings)) {
+    for (const finding of latestSast.topFindings) {
+      prioritizedVulnerabilities.push({ source: "SAST", ...finding });
+    }
+  }
+  if (latestPentest && Array.isArray(latestPentest.topFindings)) {
+    for (const finding of latestPentest.topFindings) {
+      prioritizedVulnerabilities.push({ source: "PENTEST", ...finding });
+    }
+  }
+  prioritizedVulnerabilities.sort(compareBySeverityDesc);
+  const simulatedGitHubComment = latestSast ? formatGitHubComment(latestSast) : null;
+  return {
+    repo: fullName,
     overallRiskScore,
     latestSast,
     latestPentest,
@@ -338,8 +631,15 @@ module.exports = {
   getDynamoItemByRunId,
   getDynamoItemsByRepo,
   getRepoOptions,
+  getRepoOptionsLive,
   getScansByRepoLive,
   getLatestScanByRepoLive,
   buildDashboardSummaryLive,
-  getScanByRunIdLive
+  getScanByRunIdLive,
+  getRepoOptionsPrimary,
+  getScansByRepoPrimary,
+  getLatestScanByRepoPrimary,
+  getScanByRunIdPrimary,
+  getFindingsByRunIdPrimary,
+  buildDashboardSummaryPrimary
 };
