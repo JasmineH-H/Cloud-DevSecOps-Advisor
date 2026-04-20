@@ -36,7 +36,9 @@ Compatibility note:
 | `devsecops/sast`    | Token for `POST /ingest/sast`    |
 | `devsecops/pentest` | Token for `POST /ingest/pentest` |
 
-4. Ensure IAM role in this stack matches your lab role (`LabRole` by default in `iam.tf`).
+5. Ensure IAM role in this stack matches your lab role (`LabRole` by default in `iam.tf`).
+
+6. Prepare the project GitHub repository link (`owner/repo`) and use the deployed app URL to run and schedule pentest; for dashboard demo purposes, use the Juice Shop API link (Terraform output: `juiceshop_url`) to run pentest scans.
 
 ---
 
