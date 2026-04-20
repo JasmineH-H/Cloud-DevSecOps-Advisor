@@ -198,5 +198,5 @@ Use these only for debugging or partial reruns. Standard flow is `./scripts/depl
 
 ```bash
 cd infrastructure
-terraform destroy
+terraform destroy -auto-approve -var='s3_force_destroy=true'
 ```

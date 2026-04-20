@@ -1,147 +1,84 @@
 # Cloud DevSecOps Security Advisor
 
-A cloud-based security platform that automatically runs SAST and API penetration testing on code changes and aggregates results into a centralized dashboard.
+Cloud DevSecOps Security Advisor is an AWS-based platform that automates security testing and centralizes findings in a web dashboard.
+
+It combines:
+
+- SAST scanning on repository code changes
+- Scheduled API penetration testing
+- Centralized storage and visualization of security findings
 
 ## Overview
 
-Modern development teams struggle to maintain continuous security without slowing down delivery.
-This project provides an automated DevSecOps pipeline that integrates security scanning directly into the development workflow.
+This project is designed to help teams shift security earlier in the delivery lifecycle without creating manual security bottlenecks.
 
-Key features:
+When new code is pushed:
 
-- Automatic SAST scanning on every code push
-- Scheduled API penetration testing
-- Centralized dashboard for tracking vulnerabilities and trends
+1. CI triggers security scans.
+2. Scan results are ingested by the backend API.
+3. Metadata and artifacts are stored in AWS services.
+4. The frontend dashboard presents current and historical risk trends.
+
+## Core Capabilities
+
+- Automatic SAST ingestion pipeline
+- Scheduled pentest trigger and result ingestion
+- Risk scoring and findings aggregation
+- Dashboard views for scan history, vulnerabilities, and controls
+- Infrastructure-as-code deployment with Terraform
 
 ## Architecture
 
-The system is built using AWS cloud services with a modular design:
-
-- Frontend: S3 static website hosting
-- Backend: Node.js API on ECS Fargate
-- Load Balancer: Application Load Balancer (ALB)
-- Data Storage: DynamoDB + S3
-- Scanners: Containerized SAST and Pentest services
+- Frontend: React + Vite, hosted on S3 static website hosting
+- Backend API: Node.js + Express, deployed on ECS Fargate
+- Entry point: Application Load Balancer (ALB)
+- Data layer:
+  - DynamoDB for scan metadata
+  - S3 for report artifacts
+- Security workers:
+  - Containerized SAST service
+  - Containerized pentest service
+  - Lambda pentest trigger integration
 
 ## Tech Stack
 
-- Frontend: React, Tailwind CSS
-- Backend: Node.js (Express)
-- Cloud: AWS (ECS, ALB, S3, DynamoDB, VPC)
+- Frontend: React 19, Vite, Axios
+- Backend: Node.js 20+, Express 5
+- Cloud: AWS (ECS, ALB, S3, DynamoDB, Lambda, VPC, IAM)
 - CI/CD: GitHub Actions
 - Containers: Docker
 - IaC: Terraform
 
-## Workflow
+## Repository Structure
 
-1. Developer pushes code to GitHub
-2. GitHub Actions triggers SAST scan
-3. Results are sent to backend API
-4. Backend stores results in DynamoDB and S3
-5. Dashboard fetches and displays results
-6. Scheduled pentest runs periodically via ECS tasks
+- `frontend/`: Dashboard UI
+- `backend/`: Ingest and query API
+- `scanner/`: SAST and pentest scanner services
+- `lambda/`: Pentest trigger Lambda
+- `infrastructure/`: Terraform modules for cloud resources
+- `scripts/`: Deployment and setup helper scripts
 
-## Additional Required Repos:
+## Setup Instructions
 
-### vulnerable-demo-app
+For complete setup, deployment, and teardown instructions, refer to [SETUP.md](SETUP.md).
 
-https://github.com/JasmineH-H/vulnerable-node-app.git
+This includes:
 
-### Scanner Code
+- Required prerequisites (AWS CLI, Terraform, Docker, Node.js, gh)
+- Secrets configuration
+- Terraform apply workflow
+- GitHub repository integration scripts
+- End-to-end deployment commands
 
-The SAST and pentest tooling now lives in this repository under `scanner/`.
+## Typical Workflow
 
-#### Build and Push the Pentest Docker Image
+1. Provision infrastructure with Terraform.
+2. Configure target repositories and secrets.
+3. Deploy backend, scanner images, and frontend.
+4. Trigger scans via CI or scheduler.
+5. Review findings and risk posture in the dashboard.
 
-Before triggering the pentest pipeline, ensure that the pentest Docker image is available in Amazon ECR.  
-If the image is missing, the ECS task will fail with `CannotPullContainerError`.
+## Notes
 
-> Run the following steps from this repository root. The pentest Docker context is `scanner/pentest/`.
-
-1. Get your AWS account ID
-
-```bash
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-echo $ACCOUNT_ID
-```
-
-2. Log in to Amazon ECR
-
-```bash
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
-```
-
-3. Build the pentest image
-
-```bash
-docker buildx build \
-  --platform linux/amd64 \
-  -t $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/devsecops-advisor-pentest:latest \
-  --push ./scanner/pentest
-```
-
-6. Verify that the image exists in ECR
-
-```bash
-aws ecr describe-images \
-  --repository-name devsecops-advisor-pentest \
-  --region us-east-1
-```
-
-## Deploy the Backend to AWS
-
-The backend runs on ECS Fargate behind the application load balancer created by Terraform.
-
-### 1. Confirm the required Secrets Manager entries exist
-
-The infrastructure expects these AWS Secrets Manager names:
-
-- `devsecops/sast`
-- `devsecops/pentest`
-
-### 2. Apply the infrastructure
-
-```bash
-cd infrastructure
-terraform apply
-```
-
-### 3. Build and push the backend image to ECR
-
-Use `linux/amd64` when building so ECS Fargate can pull the image correctly.
-
-```bash
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
-
-docker buildx build \
-  --platform linux/amd64 \
-  -t $ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/devsecops-advisor-backend:latest \
-  ./backend \
-  --push
-```
-
-### 4. Force ECS to pull the latest image
-
-```bash
-aws ecs update-service \
-  --cluster devsecops-advisor-cluster \
-  --service devsecops-advisor-backend-service \
-  --force-new-deployment \
-  --region us-east-1
-```
-
-### 5. Verify the backend is running
-
-```bash
-cd infrastructure
-terraform output alb_dns_name
-curl http://<alb-dns-name>/health
-```
-
-Expected response:
-
-```json
-{"success":true,"message":"Backend API is running"}
-```
+- This repo contains infrastructure state files for local/testing use.
+- Review security-sensitive scripts and IAM settings before using in production.
