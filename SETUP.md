@@ -113,7 +113,7 @@ Manual fallback:
 
 - `Settings -> Secrets and variables -> Actions` on each target repo.
 
-
+---
 ## STEP 4: Deploy application (default path)
 
 After prerequisites + Terraform output-based GitHub variables are set, run:
