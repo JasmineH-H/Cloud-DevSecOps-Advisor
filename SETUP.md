@@ -51,10 +51,6 @@ terraform plan
 terraform apply
 ```
 
-Optional: create `terraform.tfvars` from `terraform.tfvars.example` before apply.
-
-If `pentest_target_url` is empty, pentest defaults to the Juice Shop URL created by this stack.
-
 ---
 
 ## Optional Step: Get values from Terraform outputs
