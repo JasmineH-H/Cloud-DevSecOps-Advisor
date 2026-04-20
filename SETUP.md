@@ -4,22 +4,22 @@ Run these commands from the repo root: `Cloud-DevSecOps-Advisor/`.
 
 ---
 
-## Prerequisites (before Terraform)
+## STEP 1: Prerequisites (before Terraform)
 
-- Install [Terraform](https://www.terraform.io/downloads), [AWS CLI](https://aws.amazon.com/cli/), Docker, Node.js, and [GitHub CLI (`gh`)](https://cli.github.com/).
+1. Install [Terraform](https://www.terraform.io/downloads), [AWS CLI](https://aws.amazon.com/cli/), Docker, Node.js, and [GitHub CLI (`gh`)](https://cli.github.com/).
 
-- Configure AWS credentials (Learner Lab rotates tokens):
+2. Configure AWS credentials (Learner Lab rotates tokens):
 ```bash
 aws configure
 # Access Key ID, Secret Access Key, Session Token, region us-east-1, output json
 ```
 
-- Authenticate GitHub CLI:
+3. Authenticate GitHub CLI:
 ```bash
 gh auth login
 ```
 
-- Create Secrets Manager secrets used by Terraform:
+4. Create Secrets Manager secrets used by Terraform:
 ```bash
 ./scripts/setup-secrets.sh
 ```
@@ -36,11 +36,11 @@ Compatibility note:
 | `devsecops/sast`    | Token for `POST /ingest/sast`    |
 | `devsecops/pentest` | Token for `POST /ingest/pentest` |
 
-- Ensure IAM role in this stack matches your lab role (`LabRole` by default in `iam.tf`).
+4. Ensure IAM role in this stack matches your lab role (`LabRole` by default in `iam.tf`).
 
 ---
 
-## Run Terraform apply
+## STEP 2: Run Terraform apply
 
 From repo root:
 
@@ -57,7 +57,7 @@ If `pentest_target_url` is empty, pentest defaults to the Juice Shop URL created
 
 ---
 
-## Optional: Get values from Terraform outputs
+## Optional Step: Get values from Terraform outputs
 
 Note: this step is optional. You do **not** need to run it for `./scripts/deploy_all.sh` because that script reads Terraform outputs automatically. Use this section only for manual setup, debugging, or verification.
 
@@ -82,7 +82,7 @@ echo "$REPORTS_BUCKET"
 
 ---
 
-## Configure target GitHub repos
+## STEP 3: Configure target GitHub repos
 
 Run once per target repository after `terraform apply`:
 Enable branch protection so failed SAST blocks merges into the desired branch by entering [protected_branch_name]
@@ -114,7 +114,7 @@ Manual fallback:
 - `Settings -> Secrets and variables -> Actions` on each target repo.
 
 
-## Deploy application (default path)
+## STEP 4: Deploy application (default path)
 
 After prerequisites + Terraform output-based GitHub variables are set, run:
 
@@ -157,40 +157,12 @@ ALB_DNS=$(terraform output -raw alb_dns_name)
 curl -s "http://${ALB_DNS}/health"
 terraform output -raw frontend_website_url
 ```
-
 ---
 
-### Configure this repo (`Cloud-DevSecOps-Advisor`) frontend deploy variables
-
-Recommended:
-
-```bash
-./scripts/setup-advisor-repo.sh
-```
-
-Optional (if you need to target a different repo explicitly):
-
-```bash
-./scripts/setup-advisor-repo.sh --repo owner/repo
-```
-
-Manual fallback:
-
-`Settings -> Secrets and variables -> Actions -> Variables`
-
-- `VITE_API_URL = http://<ALB_DNS>`
-- `FRONTEND_BUCKET = <FRONTEND_BUCKET>`
-
----
-
-## Optional checks
+## Optional Checks:
 
 - Juice Shop URL: `cd infrastructure && terraform output -raw juiceshop_url`
 - Pentest Lambda name: `cd infrastructure && terraform output -raw pentest_lambda_name`
-
-## Manual deploy steps (optional, only if not using deploy_all.sh)
-
-Use these only for debugging or partial reruns. Standard flow is `./scripts/deploy_all.sh`.
 
 ---
 
@@ -198,5 +170,5 @@ Use these only for debugging or partial reruns. Standard flow is `./scripts/depl
 
 ```bash
 cd infrastructure
-terraform destroy -auto-approve -var='s3_force_destroy=true'
+terraform destroy
 ```
