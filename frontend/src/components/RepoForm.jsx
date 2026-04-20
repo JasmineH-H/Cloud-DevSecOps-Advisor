@@ -30,6 +30,7 @@ function RepoForm({
           options={ownerOptions}
           value={owner}
           onChange={onOwnerChange}
+          allowCustom
         />
 
         <SearchableSelect
@@ -39,20 +40,8 @@ function RepoForm({
           value={repo}
           onChange={onRepoChange}
           disabled={!owner}
+          allowCustom
         />
-
-        <div className="form-group repo-form-target">
-          <label>Target URL</label>
-          <input
-            type="text"
-            value={targetUrl}
-            placeholder="https://example.com"
-            onChange={(event) => onTargetUrlChange(event.target.value)}
-          />
-          <p className="form-help-text">
-            This URL is used for pentest controls.
-          </p>
-        </div>
 
         <div className="repo-form-actions repo-form-primary-action">
           <button type="submit">Load dashboard</button>

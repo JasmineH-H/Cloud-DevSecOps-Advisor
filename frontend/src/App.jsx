@@ -131,6 +131,21 @@ function App() {
     }
   }
 
+  function cachePentestTargetForRepo(repoLabel, target) {
+    const normalizedRepo = String(repoLabel || "").trim();
+    if (!normalizedRepo) {
+      return;
+    }
+
+    const normalizedTarget = String(target || "").trim();
+
+    const targetsByRepo = readJsonSessionObject(
+      PENTEST_TARGETS_BY_REPO_SESSION_KEY,
+    );
+    targetsByRepo[normalizedRepo] = normalizedTarget;
+    writeJsonSessionObject(PENTEST_TARGETS_BY_REPO_SESSION_KEY, targetsByRepo);
+  }
+
   function isValidHttpUrl(value) {
     try {
       const parsed = new URL(String(value || "").trim());
@@ -323,6 +338,13 @@ function App() {
     return filteredSummary.latestSast || filteredSummary.latestPentest || null;
   }, [filteredSummary, activeTab]);
 
+  const selectedProjectLabel = useMemo(() => {
+    if (owner && repo) {
+      return `${owner}/${repo}`;
+    }
+    return "your target repository";
+  }, [owner, repo]);
+
   async function loadRepoOptions() {
     try {
       const data = await fetchRepoOptions();
@@ -337,6 +359,25 @@ function App() {
           (typeof window !== "undefined" &&
             window.sessionStorage.getItem(SELECTED_REPO_SESSION_KEY)) ||
           "";
+
+        if (savedOwner && savedRepo) {
+          setOwner(savedOwner);
+          setRepo(savedRepo);
+          setPentestRepoName(`${savedOwner}/${savedRepo}`);
+
+          const savedPairExistsInOptions = data.some(
+            (item) =>
+              item.owner === savedOwner &&
+              Array.isArray(item.repositories) &&
+              item.repositories.includes(savedRepo),
+          );
+
+          if (savedPairExistsInOptions) {
+            await loadDashboard(savedOwner, savedRepo);
+          }
+
+          return;
+        }
 
         let defaultOwner = data[0].owner;
         let defaultRepo = data[0].repositories[0] || "";
@@ -472,6 +513,11 @@ function App() {
       const cachedTargetsByRepo = readJsonSessionObject(
         PENTEST_TARGETS_BY_REPO_SESSION_KEY,
       );
+      const hasCachedTarget = Object.prototype.hasOwnProperty.call(
+        cachedTargetsByRepo,
+        repoLabel,
+      );
+      const cachedTarget = String(cachedTargetsByRepo[repoLabel] || "").trim();
 
       if (cachedSchedulesByRepo[repoLabel]) {
         setScheduleExpression(String(cachedSchedulesByRepo[repoLabel]));
@@ -479,8 +525,8 @@ function App() {
         setScheduleExpression(DEFAULT_SCHEDULE_EXPRESSION);
       }
 
-      if (cachedTargetsByRepo[repoLabel]) {
-        setTargetUrl(String(cachedTargetsByRepo[repoLabel]));
+      if (hasCachedTarget) {
+        setTargetUrl(cachedTarget);
       }
 
       try {
@@ -490,7 +536,7 @@ function App() {
         }
 
         if (config?.configured) {
-          if (config.targetUrl) {
+          if (config.targetUrl && !hasCachedTarget) {
             setTargetUrl(String(config.targetUrl));
           }
           if (config.scheduleExpression) {
@@ -549,7 +595,9 @@ function App() {
               ? ""
               : findingSeverityFilter,
           title:
-            String(findingTitleFilter || "").trim().toLowerCase() === "all"
+            String(findingTitleFilter || "")
+              .trim()
+              .toLowerCase() === "all"
               ? ""
               : findingTitleFilter,
         });
@@ -569,7 +617,10 @@ function App() {
           errorMessage: finding.message || finding.description || "",
           message: finding.message || "",
           recommendation:
-            finding.recommendation || finding.message || finding.description || "",
+            finding.recommendation ||
+            finding.message ||
+            finding.description ||
+            "",
           description: finding.description || "",
           evidence: finding.evidence || "",
           file: finding.file || "",
@@ -745,6 +796,9 @@ function App() {
 
   function handleSubmit(event) {
     event.preventDefault();
+    if (owner && repo) {
+      cachePentestTargetForRepo(`${owner}/${repo}`, targetUrl);
+    }
     loadDashboard(owner, repo);
   }
 
@@ -931,7 +985,6 @@ function App() {
                       isLoading={scanHistoryLoading}
                       onView={(runId) => console.log("View scan:", runId)}
                     />
-
                   </>
                 )}
 
@@ -944,21 +997,6 @@ function App() {
                           Full findings for the latest SAST run are loaded from
                           the dedicated findings API, not the summary payload.
                         </p>
-                      </div>
-
-                      <div className="results-chip-row">
-                        <span className="results-chip">
-                          <strong>Run ID</strong>
-                          <span>{summary?.latestSast?.runId ?? "N/A"}</span>
-                        </span>
-                        <span className="results-chip">
-                          <strong>Findings</strong>
-                          <span>
-                            {sastFindingsLoading
-                              ? "Loading..."
-                              : visibleVulnerabilities.length}
-                          </span>
-                        </span>
                       </div>
                     </div>
 
@@ -1017,6 +1055,19 @@ function App() {
                     </section>
                   </>
                 )}
+              </section>
+            )}
+
+            {!summary && !loading && (
+              <section className="results-panel" aria-live="polite">
+                <div className="section-heading compact-heading">
+                  <div>
+                    <h2>Dashboard waiting for first scan</h2>
+                    <p className="section-description">
+                      Please start to push changes to {selectedProjectLabel}.
+                    </p>
+                  </div>
+                </div>
               </section>
             )}
           </section>

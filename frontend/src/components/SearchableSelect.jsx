@@ -7,6 +7,7 @@ function SearchableSelect({
   value,
   onChange,
   disabled = false,
+  allowCustom = false,
 }) {
   const [search, setSearch] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -46,8 +47,29 @@ function SearchableSelect({
 
   function handleBlur() {
     setTimeout(() => {
+      if (allowCustom) {
+        const normalized = String(search || "").trim();
+        if (normalized && normalized !== String(value || "")) {
+          onChange(normalized);
+        }
+      }
       setIsOpen(false);
     }, 150);
+  }
+
+  function handleKeyDown(event) {
+    if (!allowCustom) {
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const normalized = String(search || "").trim();
+      if (normalized && normalized !== String(value || "")) {
+        onChange(normalized);
+      }
+      setIsOpen(false);
+    }
   }
 
   return (
@@ -61,6 +83,7 @@ function SearchableSelect({
         disabled={disabled}
         onFocus={handleFocus}
         onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
         onChange={(event) => {
           setSearch(event.target.value);
           setIsOpen(true);

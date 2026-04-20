@@ -16,13 +16,13 @@ const {
 } = require("../services/scanService");
 const {
   getDynamoClientStatus,
-  saveFindingsToDynamo
+  saveFindingsToDynamo,
 } = require("../services/dynamoService");
 const { getS3ClientStatus } = require("../services/s3Service");
 const {
   invokePentestNow,
   updatePentestSchedule,
-  getPentestSchedule
+  getPentestSchedule,
 } = require("../services/pentestControlService");
 
 async function ingestSAST(req, res) {
@@ -77,8 +77,7 @@ async function ingestSAST(req, res) {
     const fallbackAllFindings = payload.result?.allFindings || [];
     const fallbackReportContent = payload.result || payload;
 
-    const normalizedSeverityCounts =
-      payload.summary?.severityCounts ||
+    const normalizedSeverityCounts = payload.summary?.severityCounts ||
       fallbackSummary.severityCounts || {
         critical: 0,
         high: 0,
@@ -87,12 +86,11 @@ async function ingestSAST(req, res) {
       };
 
     const normalizedTotalFindings =
-      payload.summary?.totalFindings ??
-      fallbackSummary.totalFindings ??
-      0;
+      payload.summary?.totalFindings ?? fallbackSummary.totalFindings ?? 0;
 
-    const { rawRiskScore, riskScore } =
-      calculateSastRiskScores(normalizedSeverityCounts);
+    const { rawRiskScore, riskScore } = calculateSastRiskScores(
+      normalizedSeverityCounts,
+    );
 
     const normalizedPayload = {
       source: payload.source || "github-actions",
@@ -102,7 +100,9 @@ async function ingestSAST(req, res) {
         runId,
         status: payload.run?.status || payload.status || "completed",
         timestamp:
-          payload.run?.timestamp || payload.timestamp || new Date().toISOString(),
+          payload.run?.timestamp ||
+          payload.timestamp ||
+          new Date().toISOString(),
         branch: payload.run?.branch || payload.branch || null,
         commitSha: payload.run?.commitSha || payload.commitSha || null,
         toolName: payload.run?.toolName || payload.toolName || "semgrep",
@@ -123,9 +123,10 @@ async function ingestSAST(req, res) {
     };
 
     const savedRecord = await saveScanRecord(normalizedPayload);
-    const findingsToStore = Array.isArray(fallbackAllFindings) && fallbackAllFindings.length > 0
-      ? fallbackAllFindings
-      : fallbackTopFindings;
+    const findingsToStore =
+      Array.isArray(fallbackAllFindings) && fallbackAllFindings.length > 0
+        ? fallbackAllFindings
+        : fallbackTopFindings;
 
     await saveFindingsToDynamo(runId, findingsToStore, {
       repo: repoObj.fullName,
@@ -154,8 +155,12 @@ async function ingestSAST(req, res) {
 
 async function getScanFindings(req, res) {
   const runId = req.query.runId || req.params.runId;
-  const severityFilter = String(req.query.severity || "").trim().toLowerCase();
-  const titleFilter = String(req.query.title || "").trim().toLowerCase();
+  const severityFilter = String(req.query.severity || "")
+    .trim()
+    .toLowerCase();
+  const titleFilter = String(req.query.title || "")
+    .trim()
+    .toLowerCase();
 
   if (!runId) {
     return res.status(400).json({
@@ -169,13 +174,16 @@ async function getScanFindings(req, res) {
 
     if (severityFilter) {
       findings = findings.filter(
-        (finding) => String(finding.severity || "").toLowerCase() === severityFilter,
+        (finding) =>
+          String(finding.severity || "").toLowerCase() === severityFilter,
       );
     }
 
     if (titleFilter) {
       findings = findings.filter((finding) =>
-        String(finding.title || "").toLowerCase().includes(titleFilter),
+        String(finding.title || "")
+          .toLowerCase()
+          .includes(titleFilter),
       );
     }
 
@@ -282,7 +290,8 @@ async function ingestPentest(req, res) {
         }));
 
       totalFindings = topFindings.length;
-      ({ rawRiskScore, riskScore } = calculatePentestRiskScores(detailedResults));
+      ({ rawRiskScore, riskScore } =
+        calculatePentestRiskScores(detailedResults));
 
       let errorCount = 0;
       let failCount = 0;
@@ -357,6 +366,18 @@ async function ingestPentest(req, res) {
     };
 
     const savedRecord = await saveScanRecord(normalizedPayload);
+
+    const findingsToStore = Array.isArray(topFindings) ? topFindings : [];
+    await saveFindingsToDynamo(runId, findingsToStore, {
+      repo: repoObj.fullName,
+      owner: repoObj.owner,
+      name: repoObj.name,
+      scanType: "PENTEST",
+      timestamp: normalizedPayload.run.timestamp,
+      branch: null,
+      commitSha: null,
+      toolName: normalizedPayload.run.toolName,
+    });
 
     return res.status(200).json({
       success: true,
@@ -548,13 +569,13 @@ async function runPentestNow(req, res) {
     return res.status(202).json({
       success: true,
       message: "Pentest task accepted for immediate execution.",
-      data: result
+      data: result,
     });
   } catch (error) {
     return res.status(400).json({
       success: false,
       message: "Failed to trigger pentest immediately.",
-      error: error.message
+      error: error.message,
     });
   }
 }
@@ -566,18 +587,18 @@ async function schedulePentest(req, res) {
     const result = await updatePentestSchedule({
       targetUrl,
       repoName,
-      scheduleExpression
+      scheduleExpression,
     });
     return res.status(200).json({
       success: true,
       message: "Pentest schedule updated.",
-      data: result
+      data: result,
     });
   } catch (error) {
     return res.status(400).json({
       success: false,
       message: "Failed to update pentest schedule.",
-      error: error.message
+      error: error.message,
     });
   }
 }
@@ -588,13 +609,13 @@ async function getPentestScheduleConfig(req, res) {
     const result = await getPentestSchedule({ repoName });
     return res.status(200).json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
     return res.status(400).json({
       success: false,
       message: "Failed to retrieve pentest schedule.",
-      error: error.message
+      error: error.message,
     });
   }
 }
@@ -614,5 +635,5 @@ module.exports = {
   getRepos,
   runPentestNow,
   schedulePentest,
-  getPentestScheduleConfig
+  getPentestScheduleConfig,
 };

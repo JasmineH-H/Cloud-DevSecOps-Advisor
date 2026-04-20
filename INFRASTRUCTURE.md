@@ -2,36 +2,24 @@
 
 Run these commands from the repo root: `Cloud-DevSecOps-Advisor/`.
 
-## Order (do this in sequence)
-
-1. Configure AWS credentials + Secrets Manager.
-2. Run `terraform apply` in `infrastructure/`.
-3. Read Terraform outputs.
-4. Use those output values to configure GitHub variables.
-5. Run `./scripts/deploy_all.sh` (this handles image push, ECS redeploy, and frontend sync).
-
 ---
 
 ## Prerequisites (before Terraform)
 
 - Install [Terraform](https://www.terraform.io/downloads), [AWS CLI](https://aws.amazon.com/cli/), Docker, Node.js, and [GitHub CLI (`gh`)](https://cli.github.com/).
-- Configure AWS credentials (Learner Lab rotates tokens):
 
+- Configure AWS credentials (Learner Lab rotates tokens):
 ```bash
 aws configure
 # Access Key ID, Secret Access Key, Session Token, region us-east-1, output json
 ```
 
 - Authenticate GitHub CLI:
-
 ```bash
 gh auth login
 ```
 
 - Create Secrets Manager secrets used by Terraform:
-
-Required: automate secret creation/update:
-
 ```bash
 ./scripts/setup-secrets.sh
 ```
@@ -45,8 +33,8 @@ Compatibility note:
 
 | Secret name         | Value                                   |
 | ------------------- | --------------------------------------- |
-| `devsecops/sast`    | Bearer token for `POST /ingest/sast`    |
-| `devsecops/pentest` | Bearer token for `POST /ingest/pentest` |
+| `devsecops/sast`    | Token for `POST /ingest/sast`    |
+| `devsecops/pentest` | Token for `POST /ingest/pentest` |
 
 - Ensure IAM role in this stack matches your lab role (`LabRole` by default in `iam.tf`).
 
@@ -69,7 +57,7 @@ If `pentest_target_url` is empty, pentest defaults to the Juice Shop URL created
 
 ---
 
-## Get values from Terraform outputs
+## Optional: Get values from Terraform outputs
 
 Note: this step is optional. You do **not** need to run it for `./scripts/deploy_all.sh` because that script reads Terraform outputs automatically. Use this section only for manual setup, debugging, or verification.
 
@@ -94,30 +82,17 @@ echo "$REPORTS_BUCKET"
 
 ---
 
-## Configure target GitHub repos (recommended: script)
+## Configure target GitHub repos
 
 Run once per target repository after `terraform apply`:
+Enable branch protection so failed SAST blocks merges into the desired branch by entering [protected_branch_name]
 
 ```bash
-./scripts/setup-target-repo.sh owner/repo
+./scripts/setup-target-repo.sh owner/repo --protect-branch [protected_branch_name]
 ./scripts/setup-target-workflow.sh owner/repo
 ```
 
-Optional: also enable branch protection so failed SAST blocks merges into the default branch:
-
-```bash
-./scripts/setup-target-repo.sh owner/repo --protect-branch
-./scripts/setup-target-workflow.sh owner/repo
-```
-
-Optional target URL variable (for pentest workflows):
-
-```bash
-./scripts/setup-target-repo.sh owner/repo --target-url https://example.com
-./scripts/setup-target-workflow.sh owner/repo
-```
-
-What this script sets on the target repo:
+What `setup-target-repo.sh` does:
 
 - Secrets:
   - `AWS_ACCESS_KEY_ID`
@@ -128,13 +103,7 @@ What this script sets on the target repo:
 - Variables:
   - `BACKEND_API_URL` (from Terraform `alb_dns_name`)
   - `S3_BUCKET` (from Terraform `reports_s3_bucket`)
-  - `TARGET_URL` (only when `--target-url` is provided)
 
-Optional branch protection support in `setup-target-repo.sh`:
-
-- `--protect-branch` protects the repo default branch and requires the `sast` check before merge
-- `--protect-branch main` protects a specific branch instead of the default branch
-- `--sast-check-context <name>` overrides the required GitHub status check context if needed
 
 What `setup-target-workflow.sh` does:
 
@@ -172,12 +141,6 @@ Skip only one side:
 ./scripts/deploy_all.sh --skip-frontend
 ```
 
-Optional pentest image source override:
-
-```bash
-PENTEST_TOOL_DIR=/path/to/custom/pentest ./scripts/deploy_all.sh
-```
-
 What `deploy_all.sh` does for you:
 
 - Runs Terraform apply
@@ -186,7 +149,7 @@ What `deploy_all.sh` does for you:
 - Optionally builds/pushes the pentest image from `scanner/pentest`
 - Optionally builds and syncs frontend to S3
 
-Verify:
+Verify (optional):
 
 ```bash
 cd infrastructure
