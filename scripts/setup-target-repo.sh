@@ -30,6 +30,8 @@ Options:
 Required environment variables:
   AWS_ACCESS_KEY_ID
   AWS_SECRET_ACCESS_KEY
+
+Optional environment variables:
   AWS_SESSION_TOKEN
 
 Notes:
@@ -221,7 +223,6 @@ require_cmd python3
 hydrate_aws_env_from_config
 require_env AWS_ACCESS_KEY_ID
 require_env AWS_SECRET_ACCESS_KEY
-require_env AWS_SESSION_TOKEN
 
 if [[ ! -d "${INFRA_DIR}" ]]; then
   echo "Cannot find infrastructure directory at: ${INFRA_DIR}" >&2
@@ -317,7 +318,9 @@ fi
 echo "Setting GitHub Actions secrets on ${TARGET_REPO}..."
 gh secret set AWS_ACCESS_KEY_ID --repo "${TARGET_REPO}" --body "${AWS_ACCESS_KEY_ID}"
 gh secret set AWS_SECRET_ACCESS_KEY --repo "${TARGET_REPO}" --body "${AWS_SECRET_ACCESS_KEY}"
-gh secret set AWS_SESSION_TOKEN --repo "${TARGET_REPO}" --body "${AWS_SESSION_TOKEN}"
+if [[ -n "${AWS_SESSION_TOKEN:-}" ]]; then
+  gh secret set AWS_SESSION_TOKEN --repo "${TARGET_REPO}" --body "${AWS_SESSION_TOKEN}"
+fi
 gh secret set INGEST_TOKEN_SAST --repo "${TARGET_REPO}" --body "${INGEST_TOKEN_SAST}"
 gh secret set INGEST_TOKEN_PENTEST --repo "${TARGET_REPO}" --body "${INGEST_TOKEN_PENTEST}"
 

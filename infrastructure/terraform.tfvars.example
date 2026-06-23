@@ -5,6 +5,10 @@
 #
 # Optional: label stored with pentest results (matches dashboard repo filter).
 # pentest_repo_name = "vulnerable-node-app"
+
+# Optional: IAM role name used by ECS tasks and the pentest Lambda.
+# Learner Lab keeps the default `LabRole`.
+# iam_role_name = "LabRole"
 #
 # Optional: override DynamoDB table name (default: "<project_name>-scan-results")
 # scan_results_table_name = "devsecops-advisor-scan-results"

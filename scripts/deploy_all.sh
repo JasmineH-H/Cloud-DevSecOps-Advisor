@@ -90,6 +90,9 @@ BACKEND_ECR="$(terraform output -raw backend_ecr_url)"
 PENTEST_ECR="$(terraform output -raw pentest_ecr_url)"
 FRONTEND_BUCKET="$(terraform output -raw frontend_bucket_name)"
 ALB_DNS="$(terraform output -raw alb_dns_name)"
+API_CLOUDFRONT_URL="$(terraform output -raw api_cloudfront_url 2>/dev/null || true)"
+FRONTEND_CLOUDFRONT_URL="$(terraform output -raw frontend_cloudfront_url 2>/dev/null || true)"
+FRONTEND_CLOUDFRONT_DISTRIBUTION_ID="$(terraform output -raw frontend_cloudfront_distribution_id 2>/dev/null || true)"
 CLUSTER_ARN="$(terraform output -raw ecs_cluster_id)"
 BACKEND_SERVICE_NAME="$(terraform output -raw backend_service_name)"
 
@@ -134,9 +137,18 @@ if [[ "${SKIP_FRONTEND_DEPLOY}" != "true" ]]; then
     echo "Installing frontend dependencies..."
     npm ci
   fi
-  echo "VITE_API_URL=http://${ALB_DNS}" > .env
+  if [[ -n "${API_CLOUDFRONT_URL}" ]]; then
+    echo "VITE_API_URL=${API_CLOUDFRONT_URL}" > .env
+  else
+    echo "VITE_API_URL=http://${ALB_DNS}" > .env
+  fi
   npm run build
   aws s3 sync dist/ "s3://${FRONTEND_BUCKET}" --delete >/dev/null
+  if [[ -n "${FRONTEND_CLOUDFRONT_DISTRIBUTION_ID}" ]]; then
+    aws cloudfront create-invalidation \
+      --distribution-id "${FRONTEND_CLOUDFRONT_DISTRIBUTION_ID}" \
+      --paths "/*" >/dev/null
+  fi
 else
   echo "==> Skipping frontend deploy step"
 fi
@@ -144,11 +156,14 @@ fi
 # Final output hints
 echo
 echo "Deploy complete."
-echo "Backend API: http://${ALB_DNS}"
-echo "Frontend URL: http://$(cd "$INFRA_DIR" && terraform output -raw frontend_website_url)"
+if [[ -n "${FRONTEND_CLOUDFRONT_URL}" ]]; then
+  echo "Frontend URL: ${FRONTEND_CLOUDFRONT_URL}"
+else
+  echo "Frontend URL: http://$(cd "$INFRA_DIR" && terraform output -raw frontend_website_url)"
+fi
 JUICESHOP_URL="$(cd "$INFRA_DIR" && terraform output -raw juiceshop_url 2>/dev/null || true)"
 if [[ -n "${JUICESHOP_URL}" ]]; then
-  echo "Juice Shop URL: ${JUICESHOP_URL}"
+  echo "Demo Target URL: ${JUICESHOP_URL}"
 else
-  echo "Juice Shop URL: unavailable (run: cd infrastructure && terraform output -raw juiceshop_url)"
+  echo "Demo Target URL: unavailable (run: cd infrastructure && terraform output -raw juiceshop_url)"
 fi

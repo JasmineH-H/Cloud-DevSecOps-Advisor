@@ -17,7 +17,7 @@ resource "aws_ecs_task_definition" "juiceshop" {
   requires_compatibilities = ["FARGATE"]
   cpu                      = "512"
   memory                   = "1024"
-  execution_role_arn       = data.aws_iam_role.ecs_task_execution.arn
+  execution_role_arn       = local.runtime_role_arn
 
   depends_on = [aws_cloudwatch_log_group.juiceshop]
 

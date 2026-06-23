@@ -90,6 +90,18 @@ variable "pentest_repo_name" {
   default     = "vulnerable-node-app"
 }
 
+variable "iam_role_name" {
+  description = "IAM role name used by ECS tasks and the pentest Lambda"
+  type        = string
+  default     = "LabRole"
+}
+
+variable "create_runtime_role" {
+  description = "Whether Terraform should create the runtime IAM role used by ECS tasks and the pentest Lambda"
+  type        = bool
+  default     = true
+}
+
 variable "scan_results_table_name" {
   description = "Optional DynamoDB table name for scan results. Leave empty to use <project_name>-scan-results."
   type        = string

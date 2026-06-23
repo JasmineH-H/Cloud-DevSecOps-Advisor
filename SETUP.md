@@ -9,36 +9,39 @@ Run these commands from the repo root: `Cloud-DevSecOps-Advisor/`.
 1. Install [Terraform](https://www.terraform.io/downloads), [AWS CLI](https://aws.amazon.com/cli/), Docker, Node.js, and [GitHub CLI (`gh`)](https://cli.github.com/).
 
 2. Configure AWS credentials (Learner Lab rotates tokens):
+
 ```bash
 aws configure
 # Access Key ID, Secret Access Key, Session Token, region us-east-1, output json
 ```
 
 3. Authenticate GitHub CLI:
+
 ```bash
 gh auth login
 ```
 
 4. Create Secrets Manager secrets used by Terraform:
+
 ```bash
 ./scripts/setup-secrets.sh
 ```
 
 This script securely prompts for token values (no echo), writes plaintext secret strings to AWS Secrets Manager, and prints the next GitHub setup checklist. Run this before `terraform apply`.
 
-
 Compatibility note:
+
 - The pentest trigger now extracts the token from either plaintext or JSON-formatted Secrets Manager values before launching the ECS task.
 - Plaintext token strings are still the recommended format.
 
-| Secret name         | Value                                   |
-| ------------------- | --------------------------------------- |
+| Secret name         | Value                            |
+| ------------------- | -------------------------------- |
 | `devsecops/sast`    | Token for `POST /ingest/sast`    |
 | `devsecops/pentest` | Token for `POST /ingest/pentest` |
 
-5. Ensure IAM role in this stack matches your lab role (`LabRole` by default in `iam.tf`).
+5. Ensure the IAM role in this stack exists in your AWS account. `LabRole` is the default for Learner Lab, but personal accounts can set `iam_role_name` in `infrastructure/terraform.tfvars` to a role they control.
 
-6. Prepare the project GitHub repository link (`owner/repo`) and use the deployed app URL to run and schedule pentest; for dashboard demo purposes, use the Juice Shop API link (Terraform output: `juiceshop_url`) to run pentest scans.
+6. Prepare the project GitHub repository link (`owner/repo`) and use the deployed app URL to run and schedule pentest; for dashboard demo purposes, use the demo target URL (Terraform output: `juiceshop_url`) to run pentest scans.
 
 ---
 
@@ -102,7 +105,6 @@ What `setup-target-repo.sh` does:
   - `BACKEND_API_URL` (from Terraform `alb_dns_name`)
   - `S3_BUCKET` (from Terraform `reports_s3_bucket`)
 
-
 What `setup-target-workflow.sh` does:
 
 - Creates/updates `.github/workflows/sast.yml` in the target repo with the reusable SAST workflow configuration.
@@ -112,6 +114,7 @@ Manual fallback:
 - `Settings -> Secrets and variables -> Actions` on each target repo.
 
 ---
+
 ## STEP 4: Deploy application (default path)
 
 After prerequisites + Terraform output-based GitHub variables are set, run:
@@ -145,7 +148,8 @@ What `deploy_all.sh` does for you:
 - Reads Terraform outputs
 - Optionally logs in to ECR, builds/pushes backend image, and forces ECS backend redeploy
 - Optionally builds/pushes the pentest image from `scanner/pentest`
-- Optionally builds and syncs frontend to S3
+- Optionally builds and syncs frontend to S3, then invalidates CloudFront when configured
+- Prints only the frontend URL and demo target URL
 
 Verify (optional):
 
@@ -155,11 +159,12 @@ ALB_DNS=$(terraform output -raw alb_dns_name)
 curl -s "http://${ALB_DNS}/health"
 terraform output -raw frontend_website_url
 ```
+
 ---
 
 ## Optional Checks:
 
-- Juice Shop URL: `cd infrastructure && terraform output -raw juiceshop_url`
+- Demo Target URL: `cd infrastructure && terraform output -raw juiceshop_url`
 - Pentest Lambda name: `cd infrastructure && terraform output -raw pentest_lambda_name`
 
 ---
